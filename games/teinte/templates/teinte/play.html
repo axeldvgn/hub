@@ -1,0 +1,65 @@
+{% extends "teinte/base.html" %}
+{% block title %}Teinte — Manche{% endblock %}
+{% block content %}
+<div class="play-screen" data-code="{{ code }}" data-total="{{ total_rounds }}">
+    <div class="play-header">
+        <span class="round-badge">Manche <span id="roundNumber">1</span> / {{ total_rounds }}</span>
+        <div class="scoreboard-mini" id="scoreboardMini"></div>
+    </div>
+
+    <div class="play-prompt">
+        <p class="play-eyebrow" id="franchiseLabel">…</p>
+        <h1 id="promptText">Chargement…</h1>
+        <p class="play-status" id="submitStatus"></p>
+    </div>
+
+    <div class="picker-area" id="pickerArea">
+        <div class="wheel-wrap">
+            <canvas id="wheelCanvas" width="260" height="260"></canvas>
+            <div class="wheel-cursor" id="wheelCursor"></div>
+            <div class="wheel-preview" id="wheelPreview"></div>
+        </div>
+
+        <div class="picker-controls">
+            <label class="slider-label">Luminosité
+                <input type="range" id="valueSlider" min="0" max="100" value="80">
+            </label>
+            <div class="hex-row">
+                <label>Hex
+                    <input type="text" id="hexInput" maxlength="7" value="#CCCCCC">
+                </label>
+                <div class="rgb-inputs">
+                    <label>R<input type="number" id="rInput" min="0" max="255" value="204"></label>
+                    <label>G<input type="number" id="gInput" min="0" max="255" value="204"></label>
+                    <label>B<input type="number" id="bInput" min="0" max="255" value="204"></label>
+                </div>
+            </div>
+            <button class="btn-primary btn-large" id="validateBtn">Valider ma couleur</button>
+        </div>
+    </div>
+
+    <div class="reveal-area" id="revealArea" hidden>
+        <h2>Résultats de la manche</h2>
+        <div class="reveal-official">
+            <div class="swatch-large" id="officialSwatch"></div>
+            <div>
+                <p class="reveal-label">Vraie couleur</p>
+                <p class="reveal-hex" id="officialHex"></p>
+            </div>
+        </div>
+        <ul class="guess-results" id="guessResults"></ul>
+        <div id="hostNextControls" hidden>
+            <button class="btn-primary btn-large" id="nextBtn">Manche suivante</button>
+        </div>
+        <p id="waitingNextHint" class="lobby-hint" hidden>En attente de l'hôte pour la manche suivante…</p>
+    </div>
+
+    <div id="hostForceControls" class="host-force" hidden>
+        <button class="btn-ghost btn-small" id="forceRevealBtn">Forcer la révélation</button>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('teinte.static', filename='js/colorwheel.js') }}"></script>
+<script src="{{ url_for('teinte.static', filename='js/play.js') }}"></script>
+{% endblock %}

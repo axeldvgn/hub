@@ -1,0 +1,28 @@
+{% extends "casino/base.html" %}
+{% block title %}Casino — Salon {{ code }}{% endblock %}
+{% block content %}
+<div class="lobby-screen" data-code="{{ code }}">
+    <p class="lobby-eyebrow">{{ game_label }} — salon en attente</p>
+    <div class="code-display">
+        <span id="codeText">{{ code }}</span>
+        <button class="btn-ghost btn-small" id="copyBtn">Copier</button>
+    </div>
+    <p class="lobby-hint">Partagez ce code à vos amis pour qu'ils rejoignent la table (5 joueurs max).</p>
+
+    <div class="lobby-players">
+        <h3>Joueurs (<span id="playerCount">1</span>/5)</h3>
+        <ul id="playerList" class="player-list"></ul>
+    </div>
+
+    <div id="hostControls" class="lobby-host-controls" hidden>
+        <button class="btn-primary btn-large" id="startBtn">Démarrer la partie</button>
+        <p class="lobby-hint">Il faut au moins 2 joueurs pour démarrer.</p>
+    </div>
+    <p id="waitingHint" class="lobby-hint">En attente que l'hôte démarre la partie…</p>
+    <p class="lobby-hint"><button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button></p>
+    <p class="form-error" id="lobbyError"></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('casino.static', filename='js/lobby.js') }}"></script>
+{% endblock %}

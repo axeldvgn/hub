@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{% block title %}Casino{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('casino.static', filename='css/style.css') }}">
+</head>
+<body>
+{% if user %}
+<header class="topbar">
+    <a class="brand" href="{{ url_for('casino.home') }}">
+        <span class="brand-swatch"></span>Le Casino
+    </a>
+    <div class="topbar-right">
+        <a class="btn-ghost btn-small" href="/">← Hub</a>
+        <span class="topbar-chips" id="topbarChips">{{ user['chips'] }} 🪙</span>
+        <span class="topbar-user">{{ user['username'] }}</span>
+        <button class="btn-ghost btn-small" id="logoutBtn">Déconnexion</button>
+    </div>
+</header>
+{% endif %}
+<main class="page">
+{% block content %}{% endblock %}
+</main>
+{% if user %}
+<script>
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await fetch('/casino/api/logout', {method: 'POST'});
+    window.location.href = '/casino/login';
+});
+</script>
+{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

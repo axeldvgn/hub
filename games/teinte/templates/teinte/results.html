@@ -1,0 +1,13 @@
+{% extends "teinte/base.html" %}
+{% block title %}Teinte — Résultats{% endblock %}
+{% block content %}
+<div class="results-screen" data-code="{{ code }}">
+    <p class="lobby-eyebrow">Partie terminée</p>
+    <h1 id="winnerHeading">Calcul du classement…</h1>
+    <ol class="ranking-list" id="rankingList"></ol>
+    <a class="btn-primary btn-large" href="{{ url_for('teinte.home') }}">Retour à l'accueil</a>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('teinte.static', filename='js/results.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Le Labo — Mini-jeux{% endblock %}
+{% block content %}
+<section class="hub-hero">
+    <p class="hub-eyebrow">Petits projets, grandeur nature</p>
+    <h1>Les jeux du Labo</h1>
+    <p class="hub-intro">Chaque jeu ci-dessous est un petit projet à part entière : son propre gameplay, ses propres comptes, mais un seul site pour tout retrouver.</p>
+</section>
+
+<section class="hub-grid">
+    {% for game in games %}
+    <a class="hub-card {{ 'is-soon' if game.status == 'soon' else '' }}" href="{{ game.url }}">
+        <div class="hub-card-top">
+            <h2>{{ game.name }}</h2>
+            {% if game.status == 'soon' %}<span class="hub-badge">Bientôt</span>{% endif %}
+        </div>
+        <p class="hub-card-tagline">{{ game.tagline }}</p>
+        <p class="hub-card-desc">{{ game.description }}</p>
+        <div class="hub-card-tags">
+            {% for tag in game.tags %}<span class="hub-tag">{{ tag }}</span>{% endfor %}
+        </div>
+    </a>
+    {% endfor %}
+</section>
+{% endblock %}

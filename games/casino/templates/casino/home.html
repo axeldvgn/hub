@@ -1,0 +1,40 @@
+{% extends "casino/base.html" %}
+{% block title %}Casino — Accueil{% endblock %}
+{% block content %}
+<div class="home-screen">
+    <h1 class="home-title">Bienvenue {{ user['username'] }} 🎲</h1>
+    <p class="home-sub">Ouvrez une table (5 joueurs max) et invitez vos amis, ou rejoignez-en une avec un code.</p>
+
+    <div class="home-cards">
+        <div class="home-card">
+            <h2>Ouvrir une table</h2>
+            <p>Choisissez le jeu. Vous devenez l'hôte et recevez un code à partager.</p>
+            <div class="game-type-grid" id="gameTypeGrid">
+                {% for gid, label in game_types.items() %}
+                <div class="game-type-option" data-type="{{ gid }}">
+                    <span class="icon">
+                        {%- if gid == 'poker' %}♠️{% elif gid == 'roulette' %}🎡{% elif gid == 'blackjack' %}🃏{% elif gid == 'dice' %}🎲{% else %}🎰{% endif -%}
+                    </span>
+                    {{ label }}
+                </div>
+                {% endfor %}
+            </div>
+            <button class="btn-primary" id="createBtn" disabled>Créer la table</button>
+            <p class="form-error" id="createError"></p>
+        </div>
+
+        <div class="home-card">
+            <h2>Rejoindre une table</h2>
+            <p>Entrez le code à 5 caractères donné par votre ami.</p>
+            <form id="joinForm" class="join-form">
+                <input type="text" id="joinCode" maxlength="5" placeholder="EX: A1B2C" autocomplete="off">
+                <button type="submit" class="btn-primary">Rejoindre</button>
+            </form>
+            <p class="form-error" id="joinError"></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('casino.static', filename='js/home.js') }}"></script>
+{% endblock %}

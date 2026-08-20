@@ -1,0 +1,43 @@
+{% extends "teinte/base.html" %}
+{% block title %}Teinte — Connexion{% endblock %}
+{% block content %}
+<div class="auth-screen">
+    <div class="auth-hero">
+        <div class="hero-wheel"></div>
+        <h1 class="auth-title">Teinte</h1>
+        <p class="auth-tagline">Devine la couleur exacte, entre potes.</p>
+    </div>
+
+    <div class="auth-card">
+        <div class="auth-tabs">
+            <button class="auth-tab active" data-tab="login">Connexion</button>
+            <button class="auth-tab" data-tab="register">Créer un compte</button>
+        </div>
+
+        <form id="loginForm" class="auth-form">
+            <label>Pseudo
+                <input type="text" name="username" autocomplete="username" required>
+            </label>
+            <label>Mot de passe
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <p class="form-error" id="loginError"></p>
+            <button type="submit" class="btn-primary">Se connecter</button>
+        </form>
+
+        <form id="registerForm" class="auth-form" hidden>
+            <label>Pseudo
+                <input type="text" name="username" minlength="3" autocomplete="username" required>
+            </label>
+            <label>Mot de passe
+                <input type="password" name="password" minlength="4" autocomplete="new-password" required>
+            </label>
+            <p class="form-error" id="registerError"></p>
+            <button type="submit" class="btn-primary">Créer mon compte</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('teinte.static', filename='js/login.js') }}"></script>
+{% endblock %}

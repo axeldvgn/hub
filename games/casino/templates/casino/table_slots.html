@@ -1,0 +1,38 @@
+{% extends "casino/base.html" %}
+{% block title %}Casino — Machines à sous {{ code }}{% endblock %}
+{% block content %}
+<div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
+    <div class="table-header">
+        <h1>🎰 Machines à sous</h1>
+        <span class="code-tag">Salon {{ code }}</span>
+    </div>
+
+    <div class="seats-row" id="seatsRow"></div>
+    <p class="turn-banner" id="statusBanner"></p>
+
+    <div class="felt wine">
+        <p style="text-align:center;color:var(--text-dim);font-size:13px;margin:0 0 10px;">Toute la table tire le même levier — chacun mise et remporte selon sa propre mise.</p>
+        <div class="slot-result" id="slotResult">
+            <div class="sym">❔</div><div class="sym">❔</div><div class="sym">❔</div>
+        </div>
+    </div>
+
+    <div class="bet-row" id="betRow">
+        <label for="betAmount">Mise</label>
+        <input type="number" id="betAmount" value="50" min="10" step="10">
+        <button class="btn-primary" id="placeBetBtn">Miser</button>
+    </div>
+
+    <ul class="bets-summary" id="betsSummary"></ul>
+
+    <div style="text-align:center;margin-top:16px;">
+        <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le tirage</button>
+        <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
+        <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
+    </div>
+    <p class="msg" id="gameMsg"></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('casino.static', filename='js/slots.js') }}"></script>
+{% endblock %}
