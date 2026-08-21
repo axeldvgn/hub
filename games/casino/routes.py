@@ -36,6 +36,18 @@ GAME_TYPES = {
     "slots": "Machines à sous",
 }
 
+SKINS = [
+    {"id": "default", "name": "Néon Rose", "color": "0xff2e8f", "price": 0},
+    {"id": "gold", "name": "Or Royal", "color": "0xf3d67a", "price": 150},
+    {"id": "emerald", "name": "Émeraude", "color": "0x1d9e75", "price": 150},
+    {"id": "sapphire", "name": "Saphir", "color": "0x378add", "price": 150},
+    {"id": "amethyst", "name": "Améthyste", "color": "0x7f77dd", "price": 200},
+    {"id": "ember", "name": "Braise", "color": "0xd85a30", "price": 200},
+    {"id": "platinum", "name": "Platine", "color": "0xe8e8e8", "price": 320},
+    {"id": "cosmic", "name": "Cosmique", "color": "0x9b5de5", "price": 400},
+]
+SKINS_BY_ID = {s["id"]: s for s in SKINS}
+
 
 # ---------------------------------------------------------------------------
 # Base de données
@@ -64,7 +76,9 @@ CREATE TABLE IF NOT EXISTS users (
     chips INTEGER NOT NULL DEFAULT 1000,
     is_bot INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    hub_user_id INTEGER
+    hub_user_id INTEGER,
+    equipped_skin TEXT NOT NULL DEFAULT 'default',
+    owned_skins TEXT NOT NULL DEFAULT '["default"]'
 );
 
 CREATE TABLE IF NOT EXISTS salons (
@@ -193,6 +207,10 @@ def init_db():
         db.execute("ALTER TABLE users ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0")
     if "hub_user_id" not in cols:
         db.execute("ALTER TABLE users ADD COLUMN hub_user_id INTEGER")
+    if "equipped_skin" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN equipped_skin TEXT NOT NULL DEFAULT 'default'")
+    if "owned_skins" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN owned_skins TEXT NOT NULL DEFAULT '[\"default\"]'")
     db.commit()
     db.close()
 
@@ -601,9 +619,10 @@ def salon_page(code):
     user = current_user()
     if not get_salon_member(salon["id"], user["id"]):
         return redirect(url_for("casino.home"))
+    my_skin = SKINS_BY_ID.get(user["equipped_skin"], SKINS_BY_ID["default"])
     return render_template(
         "casino/table_3d.html", code=salon["code"], user=user,
-        game_types=GAME_TYPES, game_icons=GAME_ICONS,
+        game_types=GAME_TYPES, game_icons=GAME_ICONS, my_skin_color=my_skin["color"],
     )
 
 
@@ -858,12 +877,14 @@ def api_salon_state(code):
         if get_my_seat(table["id"], user["id"]):
             my_seat_game = table["game_type"]
         seated = db.execute(
-            """SELECT tp.seat, u.username, u.is_bot FROM table_players tp
+            """SELECT tp.seat, u.username, u.is_bot, u.equipped_skin FROM table_players tp
                JOIN users u ON u.id = tp.user_id WHERE tp.table_id = ? ORDER BY tp.seat ASC""",
             (table["id"],),
         ).fetchall()
         occupancy[table["game_type"]] = [
-            {"seat": s["seat"], "username": s["username"], "is_bot": bool(s["is_bot"])} for s in seated
+            {"seat": s["seat"], "username": s["username"], "is_bot": bool(s["is_bot"]),
+             "color": SKINS_BY_ID.get(s["equipped_skin"], SKINS_BY_ID["default"])["color"]}
+            for s in seated
         ]
     return jsonify({
         "code": salon["code"],
@@ -1969,6 +1990,44 @@ def api_stats():
     user = current_user()
     stats = _compute_stats(db, user["id"])
     return jsonify(chips=user["chips"], username=user["username"], stats=stats)
+
+
+@casino_bp.route("/api/skins")
+@api_login_required
+def api_skins():
+    user = current_user()
+    owned = set(json.loads(user["owned_skins"]))
+    return jsonify(
+        equipped=user["equipped_skin"],
+        chips=user["chips"],
+        skins=[
+            {"id": s["id"], "name": s["name"], "color": s["color"], "price": s["price"],
+             "owned": s["id"] in owned}
+            for s in SKINS
+        ],
+    )
+
+
+@casino_bp.route("/api/skins/equip", methods=["POST"])
+@api_login_required
+def api_skins_equip():
+    data = request.get_json(force=True)
+    skin_id = data.get("skin_id")
+    if skin_id not in SKINS_BY_ID:
+        return jsonify(error="Skin inconnu."), 404
+    db = get_db()
+    user = current_user()
+    owned = set(json.loads(user["owned_skins"]))
+    if skin_id not in owned:
+        price = SKINS_BY_ID[skin_id]["price"]
+        if user["chips"] < price:
+            return jsonify(error="Solde insuffisant pour débloquer ce skin."), 400
+        db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (price, user["id"]))
+        owned.add(skin_id)
+        db.execute("UPDATE users SET owned_skins = ? WHERE id = ?", (json.dumps(list(owned)), user["id"]))
+    db.execute("UPDATE users SET equipped_skin = ? WHERE id = ?", (skin_id, user["id"]))
+    db.commit()
+    return jsonify(ok=True)
 
 
 @casino_bp.route("/api/leaderboard")

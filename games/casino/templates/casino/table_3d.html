@@ -213,12 +213,28 @@
       </div>
     </div>
 
+    <div class="game-panel-mount" id="panel-boutique" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>🛍️ Boutique</h1>
+              <span class="code-tag">Personnalisez votre avatar</span>
+          </div>
+          <p class="pot-display" id="boutiqueChips">— 🪙</p>
+          <div class="skin-grid" id="skinGrid"></div>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-ghost btn-small" id="boutiqueCloseBtn">Fermer</button>
+          </div>
+          <p class="msg" id="boutiqueMsg"></p>
+      </div>
+    </div>
+
   </div>
 </div>
 
 <script>
 window.CASINO_SALON_CODE = {{ code|tojson }};
 window.CASINO_USER_ID = {{ user['id']|tojson }};
+window.CASINO_MY_SKIN_COLOR = {{ my_skin_color|tojson }};
 </script>
 <script src="{{ url_for('casino.static', filename='js/effects.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/sound.js') }}"></script>
@@ -228,5 +244,6 @@ window.CASINO_USER_ID = {{ user['id']|tojson }};
 <script src="{{ url_for('casino.static', filename='js/blackjack.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/dice.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/slots.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/boutique.js') }}"></script>
 </body>
 </html>

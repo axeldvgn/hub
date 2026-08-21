@@ -1,16 +1,19 @@
 const SALON_CODE = window.CASINO_SALON_CODE;
 const MY_USER_ID = window.CASINO_USER_ID;
 
-const zones = [
-  {id:'slots',      name:'MACHINES A SOUS', x:40,  y:70,  w:220, h:150, felt:'#5c1035', icon:'🎰'},
-  {id:'roulette',   name:'ROULETTE',        x:640, y:70,  w:220, h:150, felt:'#0b3d2e', icon:'🎡'},
-  {id:'blackjack',  name:'BLACKJACK',       x:40,  y:390, w:220, h:150, felt:'#0b3d2e', icon:'🃏'},
-  {id:'dice',       name:'DES',             x:640, y:390, w:220, h:150, felt:'#5c1035', icon:'🎲'},
-  {id:'poker',      name:'POKER',           x:345, y:230, w:210, h:140, felt:'#3b2412', icon:'♠️'},
-];
-const promptLabels = {slots:'Machines à sous', roulette:'Roulette', blackjack:'Blackjack', dice:'Dés', poker:'Poker'};
+const ROOM_W = 1320, ROOM_H = 900; // grande salle (avant: 900x600)
 
-const player = {x:450, y:560, r:13, speed:170, vel:{x:0,y:0}, speedMag:0, walkCycle:0, facing:{x:0,y:1}};
+const zones = [
+  {id:'slots',      name:'MACHINES A SOUS', x:70,  y:100, w:260, h:180, felt:'#5c1035', icon:'🎰'},
+  {id:'roulette',   name:'ROULETTE',        x:990, y:100, w:260, h:180, felt:'#0b3d2e', icon:'🎡'},
+  {id:'blackjack',  name:'BLACKJACK',       x:70,  y:620, w:260, h:180, felt:'#0b3d2e', icon:'🃏'},
+  {id:'dice',       name:'DES',             x:990, y:620, w:260, h:180, felt:'#5c1035', icon:'🎲'},
+  {id:'poker',      name:'POKER',           x:530, y:350, w:260, h:180, felt:'#3b2412', icon:'♠️'},
+  {id:'boutique',   name:'BOUTIQUE',        x:590, y:70,  w:140, h:90,  felt:'#3c3489', icon:'🛍️'},
+];
+const promptLabels = {slots:'Machines à sous', roulette:'Roulette', blackjack:'Blackjack', dice:'Dés', poker:'Poker', boutique:'Boutique'};
+
+const player = {x:660, y:750, r:13, speed:190, vel:{x:0,y:0}, speedMag:0, walkCycle:0, facing:{x:0,y:1}};
 let nearbyZoneId = null;
 
 const npcEmojis = ['🎩','👗','🕶️','👒','🥂','💃','🕺','🎭','👔','💍'];
@@ -23,17 +26,17 @@ function circleRectCollide(cx,cy,cr,rx,ry,rw,rh){
   return (dx*dx+dy*dy) < (cr*cr);
 }
 function randPosOutsideZones(r){
-  let x=450, y=300, ok=false, tries=0;
+  let x=660, y=450, ok=false, tries=0;
   while(!ok && tries<200){
-    x = 24 + Math.random()*852;
-    y = 60 + Math.random()*500;
+    x = 30 + Math.random()*(ROOM_W-60);
+    y = 50 + Math.random()*(ROOM_H-100);
     ok = !zones.some(z => circleRectCollide(x,y,r+6,z.x,z.y,z.w,z.h));
     tries++;
   }
   return {x,y};
 }
 const npcs = [];
-for(let i=0;i<8;i++){
+for(let i=0;i<12;i++){
   const pos = randPosOutsideZones(10);
   npcs.push({x:pos.x, y:pos.y, vx:0, vy:0, r:10, speedMag:0, walkCycle:0, changeTimer:Math.random()*2, emoji:npcEmojis[i%npcEmojis.length], color:npcColors[i%npcColors.length]});
 }
@@ -90,9 +93,9 @@ function updatePlayer(dt){
   }
 
   const nx = player.x + player.vel.x*dt;
-  if(nx > player.r+8 && nx < 900-player.r-8 && !collidesAny(nx, player.y)) player.x = nx; else player.vel.x = 0;
+  if(nx > player.r+8 && nx < ROOM_W-player.r-8 && !collidesAny(nx, player.y)) player.x = nx; else player.vel.x = 0;
   const ny = player.y + player.vel.y*dt;
-  if(ny > player.r+8 && ny < 600-player.r-8 && !collidesAny(player.x, ny)) player.y = ny; else player.vel.y = 0;
+  if(ny > player.r+8 && ny < ROOM_H-player.r-8 && !collidesAny(player.x, ny)) player.y = ny; else player.vel.y = 0;
 
   nearbyZoneId = null;
   for(const z of zones){
@@ -113,8 +116,8 @@ function updateNPCs(dt){
     if(n.speedMag > 3) n.walkCycle += dt*n.speedMag*0.05;
     let nx = n.x + n.vx*dt;
     let ny = n.y + n.vy*dt;
-    if(nx < 20 || nx > 880){ n.vx *= -1; nx = n.x; }
-    if(ny < 20 || ny > 580){ n.vy *= -1; ny = n.y; }
+    if(nx < 20 || nx > ROOM_W-20){ n.vx *= -1; nx = n.x; }
+    if(ny < 20 || ny > ROOM_H-20){ n.vy *= -1; ny = n.y; }
     if(zones.some(z => circleRectCollide(nx, ny, n.r, z.x, z.y, z.w, z.h))){
       n.vx *= -1; n.vy *= -1;
     } else { n.x = nx; n.y = ny; }
@@ -136,7 +139,7 @@ function makeCarpetTexture(){
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(10,7);
+  tex.repeat.set(14,10);
   return tex;
 }
 function makeWallTexture(){
@@ -157,7 +160,7 @@ function makeWallTexture(){
   }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(9,1);
+  tex.repeat.set(13,1);
   return tex;
 }
 function makeCeilingTexture(){
@@ -173,7 +176,7 @@ function makeCeilingTexture(){
   for(let x=6;x<256;x+=64){ for(let y=6;y<256;y+=64){ cx.fillRect(x,y,52,52); } }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(6,4);
+  tex.repeat.set(9,6);
   return tex;
 }
 function makeArtTexture(hue1,hue2){
@@ -299,7 +302,7 @@ container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x120a1e);
-scene.fog = new THREE.Fog(0x120a1e, 16, 38);
+scene.fog = new THREE.Fog(0x120a1e, 22, 54);
 
 const camera = new THREE.PerspectiveCamera(58, (container.clientWidth||900)/(container.clientHeight||600), 0.1, 200);
 
@@ -328,31 +331,36 @@ scene.add(sun);
 const pinkLight = new THREE.PointLight(0xff2e8f,0.6,10,2); pinkLight.position.set(-3,2,0); scene.add(pinkLight);
 const cyanLight = new THREE.PointLight(0x2ff1ff,0.6,10,2); cyanLight.position.set(3,2,0); scene.add(cyanLight);
 
+const FLOOR_W = ROOM_W/WORLD_SCALE, FLOOR_D = ROOM_H/WORLD_SCALE; // 44 x 30
+const HALF_W = FLOOR_W/2, HALF_D = FLOOR_D/2;
+
 const floorMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(30,20),
-  new THREE.MeshStandardMaterial({map:makeCarpetTexture(), roughness:1})
+  new THREE.PlaneGeometry(FLOOR_W, FLOOR_D),
+  new THREE.MeshStandardMaterial({map:makeCarpetTexture(), roughness:0.75, metalness:0.05})
 );
 floorMesh.rotation.x = -Math.PI/2;
 floorMesh.receiveShadow = true;
 scene.add(floorMesh);
 
-const WALL_HEIGHT = 3.2;
+const WALL_HEIGHT = 5.6; // salle beaucoup plus haute (avant: 3.2)
 const ceilingMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(30,20),
+  new THREE.PlaneGeometry(FLOOR_W, FLOOR_D),
   new THREE.MeshStandardMaterial({map:makeCeilingTexture(), roughness:0.95})
 );
 ceilingMesh.rotation.x = Math.PI/2;
 ceilingMesh.position.y = WALL_HEIGHT;
 scene.add(ceilingMesh);
-buildChandelier(0, WALL_HEIGHT-0.3, 0);
+buildChandelier(0, WALL_HEIGHT-0.5, 0);
+buildChandelier(-HALF_W*0.45, WALL_HEIGHT-0.5, 0);
+buildChandelier(HALF_W*0.45, WALL_HEIGHT-0.5, 0);
 
 const wallMat = new THREE.MeshStandardMaterial({map:makeWallTexture(), roughness:0.85});
 const trimMat = new THREE.MeshStandardMaterial({color:0xd4af37, emissive:0x2a1d05, roughness:0.4, metalness:0.5});
 const wallSpecs = [
-  {w:30, h:WALL_HEIGHT, d:0.3, x:0, z:-10.15},
-  {w:30, h:WALL_HEIGHT, d:0.3, x:0, z:10.15},
-  {w:0.3, h:WALL_HEIGHT, d:20, x:-15.15, z:0},
-  {w:0.3, h:WALL_HEIGHT, d:20, x:15.15, z:0},
+  {w:FLOOR_W, h:WALL_HEIGHT, d:0.3, x:0, z:-(HALF_D+0.15)},
+  {w:FLOOR_W, h:WALL_HEIGHT, d:0.3, x:0, z:HALF_D+0.15},
+  {w:0.3, h:WALL_HEIGHT, d:FLOOR_D, x:-(HALF_W+0.15), z:0},
+  {w:0.3, h:WALL_HEIGHT, d:FLOOR_D, x:HALF_W+0.15, z:0},
 ];
 wallSpecs.forEach(s=>{
   const wall = new THREE.Mesh(new THREE.BoxGeometry(s.w,s.h,s.d), wallMat);
@@ -363,13 +371,33 @@ wallSpecs.forEach(s=>{
   trim.position.set(s.x, s.h+0.04, s.z);
   scene.add(trim);
 });
-makeFramedArt(-9, 1.7, -9.97, 0, '#a3294f', '#241030');
-makeFramedArt(9, 1.7, -9.97, 0, '#0f6e56', '#241030');
-makeFramedArt(-9, 1.7, 9.97, Math.PI, '#534ab7', '#241030');
-makeFramedArt(9, 1.7, 9.97, Math.PI, '#993c1d', '#241030');
-[-9,-4.5,4.5,9].forEach(x=>{
-  makeSconce(x, 1.7, -9.9, 0);
-  makeSconce(x, 1.7, 9.9, Math.PI);
+const artZ = HALF_D - 0.03;
+[-HALF_W*0.75, -HALF_W*0.35, HALF_W*0.35, HALF_W*0.75].forEach((x,i)=>{
+  const hues = [['#a3294f','#241030'],['#0f6e56','#241030'],['#534ab7','#241030'],['#993c1d','#241030']];
+  makeFramedArt(x, 2.6, -artZ, 0, hues[i][0], hues[i][1]);
+  makeFramedArt(x, 2.6, artZ, Math.PI, hues[(i+2)%4][0], hues[(i+2)%4][1]);
+});
+const sconceXs = [-HALF_W*0.85, -HALF_W*0.5, -HALF_W*0.15, HALF_W*0.15, HALF_W*0.5, HALF_W*0.85];
+sconceXs.forEach(x=>{
+  makeSconce(x, 2.6, -(HALF_D-0.08), 0);
+  makeSconce(x, 2.6, HALF_D-0.08, Math.PI);
+});
+
+// Piliers dorés aux quatre coins, du sol au plafond
+[[-HALF_W+1.2,-HALF_D+1.2],[HALF_W-1.2,-HALF_D+1.2],[-HALF_W+1.2,HALF_D-1.2],[HALF_W-1.2,HALF_D-1.2]].forEach(([px,pz])=>{
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.35,0.4,WALL_HEIGHT,10),
+    new THREE.MeshStandardMaterial({color:0x2a1a3d, roughness:0.6, metalness:0.15})
+  );
+  pillar.position.set(px, WALL_HEIGHT/2, pz);
+  pillar.castShadow = true; pillar.receiveShadow = true;
+  scene.add(pillar);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.46,0.46,0.14,10), trimMat);
+  cap.position.set(px, WALL_HEIGHT-0.07, pz);
+  scene.add(cap);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.46,0.5,0.16,10), trimMat);
+  base.position.set(px, 0.08, pz);
+  scene.add(base);
 });
 
 zones.forEach(z=>{
@@ -403,13 +431,21 @@ zones.forEach(z=>{
   scene.add(label);
 });
 
-const playerMesh = makeCharacter(0xff2e8f);
+const MY_SKIN_COLOR = (typeof window.CASINO_MY_SKIN_COLOR === 'string') ? parseInt(window.CASINO_MY_SKIN_COLOR, 16) : 0xff2e8f;
+const playerMesh = makeCharacter(MY_SKIN_COLOR);
 playerMesh.traverse(o=>{ if(o.isMesh) o.castShadow = true; });
 const playerRing = new THREE.Mesh(new THREE.TorusGeometry(0.5,0.05,8,24), new THREE.MeshStandardMaterial({color:0xf3d67a, emissive:0x6b551a}));
 playerRing.rotation.x = Math.PI/2; playerRing.position.y = 0.05;
 playerMesh.add(playerRing);
 scene.add(playerMesh);
 const playerBlob = makeBlobShadow();
+window.__casinoApplySkin = function(colorValue){
+  const hex = typeof colorValue === 'string' ? parseInt(colorValue, 16) : colorValue;
+  if(!Number.isFinite(hex)) return;
+  const mat = playerMesh.userData.bodyMat;
+  mat.color.set(hex);
+  mat.emissive.copy(new THREE.Color(hex)).multiplyScalar(0.15);
+};
 
 const npcMeshes = npcs.map(n=>{
   const m = makeCharacter(n.color);
@@ -455,7 +491,7 @@ function updateTableOccupancy(occupancyByGameType){
       fig.mesh.visible = true;
       fig.blob.position.set(wx, 0.015, wz);
       fig.blob.visible = true;
-      const color = occ.is_bot ? 0x8e6bff : 0x2ff1ff;
+      const color = occ.is_bot ? 0x8e6bff : (typeof occ.color === 'string' ? parseInt(occ.color, 16) : 0x2ff1ff);
       const mat = fig.mesh.userData.bodyMat;
       if(mat.color.getHex() !== color){
         mat.color.set(color);
@@ -477,7 +513,7 @@ pollOccupancy();
 setInterval(pollOccupancy, 3000);
 
 let camYaw = 0;
-let cameraDistance = 5;
+let cameraDistance = 6.5;
 let isDragging = false;
 let dragLastX = 0;
 const camLook = new THREE.Vector3();
@@ -489,7 +525,7 @@ domEl.addEventListener('pointerdown', e=>{ isDragging=true; dragLastX=e.clientX;
 window.addEventListener('pointermove', e=>{ if(!isDragging) return; const dx=e.clientX-dragLastX; dragLastX=e.clientX; camYaw -= dx*0.008; });
 window.addEventListener('pointerup', ()=>{ isDragging=false; domEl.style.cursor='grab'; });
 domEl.addEventListener('pointercancel', ()=>{ isDragging=false; domEl.style.cursor='grab'; });
-domEl.addEventListener('wheel', e=>{ e.preventDefault(); cameraDistance = Math.min(9, Math.max(3, cameraDistance + e.deltaY*0.006)); }, {passive:false});
+domEl.addEventListener('wheel', e=>{ e.preventDefault(); cameraDistance = Math.min(14, Math.max(3, cameraDistance + e.deltaY*0.006)); }, {passive:false});
 
 function updateCamera(dt, instant){
   const px = toWorldX(player.x), pz = toWorldZ(player.y);
@@ -574,9 +610,11 @@ async function openGame(gameType){
   if(currentGameType === gameType && !modalOverlay.classList.contains('hidden')) return;
   cancelAnimationFrame(rafId);
   if(currentGameHandle){ currentGameHandle.stop(); currentGameHandle = null; }
-  try {
-    await fetch(`/casino/api/salon/${SALON_CODE}/${gameType}/sit`, {method:'POST'});
-  } catch(e){}
+  if(gameType !== 'boutique'){
+    try {
+      await fetch(`/casino/api/salon/${SALON_CODE}/${gameType}/sit`, {method:'POST'});
+    } catch(e){}
+  }
   document.querySelectorAll('.game-panel-mount').forEach(el => el.hidden = true);
   const root = document.getElementById('panel-' + gameType);
   root.hidden = false;
