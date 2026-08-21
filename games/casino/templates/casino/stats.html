@@ -1,0 +1,27 @@
+{% extends "casino/base.html" %}
+{% block title %}Casino — Statistiques{% endblock %}
+{% block content %}
+<div class="home-screen">
+    <h1 class="home-title">📊 Statistiques</h1>
+    <p class="home-sub">Votre historique de jeu, jetons compris.</p>
+
+    <div class="panel stats-balance">
+        <p class="label">Solde actuel</p>
+        <p class="value" id="statsBalance">— 🪙</p>
+    </div>
+
+    <div class="stats-grid" id="statsGrid"></div>
+
+    <div class="open-tables">
+        <h3>🏆 Classement (jetons)</h3>
+        <ol class="leaderboard" id="leaderboard"></ol>
+    </div>
+
+    <div class="open-tables">
+        <a class="btn-ghost" href="{{ url_for('casino.home') }}">← Retour à l'accueil</a>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('casino.static', filename='js/stats.js') }}"></script>
+{% endblock %}

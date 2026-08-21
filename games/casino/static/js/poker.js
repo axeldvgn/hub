@@ -93,12 +93,14 @@ window.CasinoGames.poker = function (root, code, myUserId) {
         potDisplay.textContent = `Pot : ${(game.pot || 0).toLocaleString('fr-FR')} 🪙`;
         const community = game.community_cards || [];
         if (community.length < shownCommunity) shownCommunity = 0; // nouvelle main
+        if (community.length > shownCommunity && window.CasinoSound) window.CasinoSound.cardDeal();
         communityCards.innerHTML = community.map((c, i) => cardHtml(c, i >= shownCommunity)).join('') || '<span style="color:var(--text-dim);font-size:13px;">—</span>';
         shownCommunity = community.length;
 
         const me = gamePlayersByUser[myUserId];
         const myHole = (me && me.hole_cards) || [];
         if (myHole.length < shownMine) shownMine = 0;
+        if (myHole.length > shownMine && window.CasinoSound) window.CasinoSound.cardDeal();
         myCards.innerHTML = myHole.length ? myHole.map((c, i) => cardHtml(c, i >= shownMine)).join('') : '<span style="color:var(--text-dim);font-size:13px;">—</span>';
         shownMine = myHole.length;
         handStrength.textContent = (game.phase !== 'done' && game.my_hand_label) ? `Votre main : ${game.my_hand_label}` : '';
@@ -144,7 +146,12 @@ window.CasinoGames.poker = function (root, code, myUserId) {
             if (handKey !== celebratedHandKey) {
                 celebratedHandKey = handKey;
                 const iWon = r.breakdown.some(b => b.winners.some(w => w.user_id === myUserId));
-                if (iWon) window.CasinoFX.confetti(resultPanel, 20);
+                if (iWon) {
+                    window.CasinoFX.confetti(resultPanel, 20);
+                    if (window.CasinoSound) window.CasinoSound.win(r.pot >= 300);
+                } else if (me && me.status !== 'folded' && window.CasinoSound) {
+                    window.CasinoSound.lose();
+                }
             }
         } else {
             resultPanel.hidden = true;
@@ -157,17 +164,20 @@ window.CasinoGames.poker = function (root, code, myUserId) {
     }
 
     foldBtn.addEventListener("click", async () => {
+        if (window.CasinoSound) window.CasinoSound.button();
         try { await post(`/casino/api/salon/${code}/poker/action`, { action: 'fold' }); poll(); }
         catch (e) { pokerMsg.textContent = e.message; }
     });
     callBtn.addEventListener("click", async () => {
         const action = callBtn.textContent.startsWith('Checker') ? 'check' : 'call';
+        if (window.CasinoSound) action === 'check' ? window.CasinoSound.button() : window.CasinoSound.chip(2);
         try { await post(`/casino/api/salon/${code}/poker/action`, { action }); poll(); }
         catch (e) { pokerMsg.textContent = e.message; }
     });
     raiseBtn.addEventListener("click", async () => {
         const action = raiseBtn.textContent === 'Relancer' ? 'raise' : 'bet';
         const amount = parseInt(raiseAmount.value, 10);
+        if (window.CasinoSound) window.CasinoSound.chip(3);
         try { await post(`/casino/api/salon/${code}/poker/action`, { action, amount }); poll(); }
         catch (e) { pokerMsg.textContent = e.message; }
     });
@@ -175,6 +185,7 @@ window.CasinoGames.poker = function (root, code, myUserId) {
         const myTp = lastState && lastState.players.find(p => p.user_id === myUserId);
         const stack = myTp ? myTp.stack : 0;
         const action = raiseBtn.textContent === 'Relancer' ? 'raise' : 'bet';
+        if (window.CasinoSound) window.CasinoSound.chip(4);
         try { await post(`/casino/api/salon/${code}/poker/action`, { action, amount: stack }); poll(); }
         catch (e) { pokerMsg.textContent = e.message; }
     });

@@ -45,6 +45,14 @@ function setKey(k, val){
   if(['arrowleft','q','a'].includes(k)) keys.left = val;
   if(['arrowright','d'].includes(k)) keys.right = val;
 }
+function unlockSoundOnce(){
+  if(window.CasinoSound) window.CasinoSound.unlock();
+  window.removeEventListener('keydown', unlockSoundOnce);
+  window.removeEventListener('pointerdown', unlockSoundOnce);
+}
+window.addEventListener('keydown', unlockSoundOnce, {once:true});
+window.addEventListener('pointerdown', unlockSoundOnce, {once:true});
+
 window.addEventListener('keydown', e=>{
   const k = e.key.toLowerCase();
   setKey(k, true);
@@ -410,6 +418,63 @@ const npcMeshes = npcs.map(n=>{
   return m;
 });
 const npcBlobs = npcs.map(()=> makeBlobShadow());
+
+// Figurines assises aux tables, reconstruites depuis l'occupation reelle
+// (sondee en tache de fond) : visibles en marchant, meme sans avoir encore
+// ouvert la table.
+const seatFigures = {};
+function ensureSeatCapacity(gameType, count){
+  seatFigures[gameType] = seatFigures[gameType] || [];
+  const figs = seatFigures[gameType];
+  while(figs.length < count){
+    const mesh = makeCharacter(0x888888);
+    mesh.scale.set(0.7,0.7,0.7);
+    mesh.visible = false;
+    scene.add(mesh);
+    const blob = makeBlobShadow();
+    blob.visible = false;
+    figs.push({mesh, blob});
+  }
+}
+function updateTableOccupancy(occupancyByGameType){
+  zones.forEach(z=>{
+    const list = (occupancyByGameType && occupancyByGameType[z.id]) || [];
+    ensureSeatCapacity(z.id, 5);
+    const figs = seatFigures[z.id];
+    const cx = toWorldX(z.x+z.w/2), cz = toWorldZ(z.y+z.h/2);
+    const radius = Math.max(z.w, z.h)/WORLD_SCALE/2 + 1.0;
+    for(let i=0;i<5;i++){
+      const fig = figs[i];
+      const occ = list[i];
+      if(!occ){ fig.mesh.visible = false; fig.blob.visible = false; continue; }
+      const angle = (i/5)*Math.PI*2 - Math.PI/2;
+      const wx = cx + Math.cos(angle)*radius;
+      const wz = cz + Math.sin(angle)*radius;
+      fig.mesh.position.set(wx, 0, wz);
+      fig.mesh.rotation.y = Math.atan2(cx-wx, cz-wz);
+      fig.mesh.visible = true;
+      fig.blob.position.set(wx, 0.015, wz);
+      fig.blob.visible = true;
+      const color = occ.is_bot ? 0x8e6bff : 0x2ff1ff;
+      const mat = fig.mesh.userData.bodyMat;
+      if(mat.color.getHex() !== color){
+        mat.color.set(color);
+        mat.emissive.copy(new THREE.Color(color)).multiplyScalar(0.15);
+      }
+    }
+  });
+}
+async function pollOccupancy(){
+  try{
+    const res = await fetch(`/casino/api/salon/${SALON_CODE}/state`);
+    if(res.ok){
+      const data = await res.json();
+      updateTableOccupancy(data.tables);
+    }
+  } catch(e){}
+}
+pollOccupancy();
+setInterval(pollOccupancy, 3000);
 
 let camYaw = 0;
 let cameraDistance = 5;

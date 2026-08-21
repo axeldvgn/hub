@@ -8,7 +8,7 @@
     <div class="home-cards">
         <div class="home-card">
             <h2>Ouvrir un salon</h2>
-            <p>Vous entrez directement dans le casino en 3D. Marchez jusqu'à une table (poker, roulette, blackjack, dés, machines à sous) et asseyez-vous — les sièges vides sont comblés par des bots. Changez de table quand vous voulez.</p>
+            <p>Vous entrez directement dans le casino en 3D. Marchez jusqu'à une table et asseyez-vous. Au poker et au blackjack, les sièges vides sont comblés par des bots pour jouer même seul ; à la roulette, aux dés et aux machines à sous, vous jouez directement contre la banque. Changez de table quand vous voulez.</p>
             <button class="btn-primary" id="createBtn">Créer un salon</button>
             <p class="form-error" id="createError"></p>
         </div>
@@ -22,6 +22,10 @@
             </form>
             <p class="form-error" id="joinError"></p>
         </div>
+    </div>
+
+    <div class="open-tables">
+        <a class="btn-ghost" href="{{ url_for('casino.stats_page') }}">📊 Statistiques &amp; classement</a>
     </div>
 </div>
 {% endblock %}

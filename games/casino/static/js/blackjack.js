@@ -61,10 +61,12 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
             const cards = game.dealer_cards || [];
             if (cards.length < shownDealer) shownDealer = 0;
             if (game.dealer_cards_hidden && cards.length >= 2) {
+                if (shownDealer < 1 && window.CasinoSound) window.CasinoSound.cardDeal();
                 dealerCards.innerHTML = cardHtml(cards[0], shownDealer < 1) + cardHtml(null);
                 dealerValue.textContent = 'Valeur : ?';
                 shownDealer = 1;
             } else {
+                if (cards.length > shownDealer && window.CasinoSound) window.CasinoSound.cardDeal();
                 dealerCards.innerHTML = cards.map((c, i) => cardHtml(c, i >= shownDealer)).join('');
                 dealerValue.textContent = game.dealer_value != null ? `Valeur : ${game.dealer_value}` : 'Valeur : ?';
                 shownDealer = cards.length;
@@ -98,7 +100,13 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
                 const dealerVal = game.dealer_value;
                 const iWon = me && me.bet > 0 && me.status !== 'bust' &&
                     (me.status === 'blackjack' || dealerVal == null || dealerVal > 21 || me.value > dealerVal);
-                if (iWon) window.CasinoFX.confetti(root.querySelector('.felt'), 18);
+                const isPush = me && me.bet > 0 && me.status !== 'bust' && dealerVal != null && dealerVal <= 21 && me.value === dealerVal;
+                if (iWon) {
+                    window.CasinoFX.confetti(root.querySelector('.felt'), 18);
+                    if (window.CasinoSound) window.CasinoSound.win(me.status === 'blackjack');
+                } else if (me && me.bet > 0 && !isPush && window.CasinoSound) {
+                    window.CasinoSound.lose();
+                }
             }
         }
 
@@ -134,14 +142,18 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
 
     placeBetBtn.addEventListener("click", async () => {
         const amount = parseInt(betAmount.value, 10);
-        try { await post(`/casino/api/salon/${code}/blackjack/bet`, { amount }); gameMsg.textContent = ''; poll(); }
-        catch (e) { gameMsg.textContent = e.message; }
+        try {
+            if (window.CasinoSound) window.CasinoSound.chip(3);
+            await post(`/casino/api/salon/${code}/blackjack/bet`, { amount }); gameMsg.textContent = ''; poll();
+        } catch (e) { gameMsg.textContent = e.message; }
     });
     hitBtn.addEventListener("click", async () => {
+        if (window.CasinoSound) window.CasinoSound.button();
         try { await post(`/casino/api/salon/${code}/blackjack/action`, { action: 'hit' }); poll(); }
         catch (e) { gameMsg.textContent = e.message; }
     });
     standBtn.addEventListener("click", async () => {
+        if (window.CasinoSound) window.CasinoSound.button();
         try { await post(`/casino/api/salon/${code}/blackjack/action`, { action: 'stand' }); poll(); }
         catch (e) { gameMsg.textContent = e.message; }
     });

@@ -139,6 +139,7 @@ window.CasinoGames.roulette = function (root, code, myUserId) {
         const justResolved = game.phase === 'resolved' && roundKey !== lastRoundKey;
         if (justResolved) {
             spinWheelTo(game.result.number);
+            if (window.CasinoSound) window.CasinoSound.spinWheel(3.2);
             revealAt = Date.now() + 3200;
         }
         lastRoundKey = roundKey;
@@ -172,8 +173,14 @@ window.CasinoGames.roulette = function (root, code, myUserId) {
             `).join('');
             if (roundKey !== celebratedRoundKey) {
                 celebratedRoundKey = roundKey;
-                if (game.my_bet && game.my_bet.payout > 0) {
-                    window.CasinoFX.confetti(wheelOuter, game.my_bet.payout >= game.my_bet.amount * 5 ? 24 : 14);
+                if (game.my_bet) {
+                    if (game.my_bet.payout > 0) {
+                        const big = game.my_bet.payout >= game.my_bet.amount * 5;
+                        window.CasinoFX.confetti(wheelOuter, big ? 24 : 14);
+                        if (window.CasinoSound) big ? window.CasinoSound.jackpot() : window.CasinoSound.win(false);
+                    } else if (window.CasinoSound) {
+                        window.CasinoSound.lose();
+                    }
                 }
             }
         } else {
@@ -201,6 +208,7 @@ window.CasinoGames.roulette = function (root, code, myUserId) {
         if (!selectedBet) { gameMsg.textContent = "Choisissez une mise d'abord."; return; }
         const amount = parseInt(betAmount.value, 10);
         try {
+            if (window.CasinoSound) window.CasinoSound.chip(3);
             await post(`/casino/api/salon/${code}/round/roulette/bet`, { ...selectedBet, amount });
             gameMsg.textContent = '';
             poll();

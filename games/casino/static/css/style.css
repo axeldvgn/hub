@@ -181,6 +181,29 @@ input[type="text"], input[type="password"], input[type="number"] {
     padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;
 }
 
+/* ----- Statistiques ----- */
+
+.stats-balance { max-width: 320px; margin: 0 auto 28px; text-align: center; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 32px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.stat-card h3 { font-size: 1rem; margin-bottom: 10px; color: var(--gold-bright); }
+.stat-line { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-dim); padding: 3px 0; }
+.stat-line span:last-child { color: var(--text); font-family: var(--font-mono); }
+.stat-line.net span:last-child { font-weight: 700; }
+.stat-line.win span:last-child { color: var(--success); }
+.stat-line.lose span:last-child { color: var(--danger); }
+
+.leaderboard { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.leaderboard li {
+    display: flex; align-items: center; gap: 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px;
+}
+.leaderboard li:first-child { border-color: var(--gold); background: var(--accent-soft); }
+.leaderboard .rank-pos { font-family: var(--font-display); font-weight: 700; color: var(--text-dim); width: 32px; }
+.leaderboard li:first-child .rank-pos { color: var(--gold); }
+.leaderboard .rank-name { flex: 1; font-weight: 600; }
+.leaderboard .rank-score { font-family: var(--font-mono); color: var(--gold-bright); }
+
 /* ----- Lobby ----- */
 
 .lobby-screen { text-align: center; padding-top: 20px; }

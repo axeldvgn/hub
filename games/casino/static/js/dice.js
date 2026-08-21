@@ -45,6 +45,7 @@ window.CasinoGames.dice = function (root, code, myUserId) {
     });
 
     function playRoll(d1, d2) {
+        if (window.CasinoSound) window.CasinoSound.diceRoll();
         dice1El.classList.add('rolling');
         dice2El.classList.add('rolling');
         let ticks = 0;
@@ -128,8 +129,14 @@ window.CasinoGames.dice = function (root, code, myUserId) {
             `).join('');
             if (roundKey !== celebratedRoundKey) {
                 celebratedRoundKey = roundKey;
-                if (game.my_bet && game.my_bet.payout > 0) {
-                    window.CasinoFX.confetti(root.querySelector('.dice-faces').parentElement, game.my_bet.payout >= game.my_bet.amount * 3 ? 20 : 12);
+                if (game.my_bet) {
+                    if (game.my_bet.payout > 0) {
+                        const big = game.my_bet.payout >= game.my_bet.amount * 3;
+                        window.CasinoFX.confetti(root.querySelector('.dice-faces').parentElement, big ? 20 : 12);
+                        if (window.CasinoSound) big ? window.CasinoSound.jackpot() : window.CasinoSound.win(false);
+                    } else if (window.CasinoSound) {
+                        window.CasinoSound.lose();
+                    }
                 }
             }
         } else {
@@ -152,6 +159,7 @@ window.CasinoGames.dice = function (root, code, myUserId) {
         if (!selectedType) { gameMsg.textContent = "Choisissez un pari d'abord."; return; }
         const amount = parseInt(betAmount.value, 10);
         try {
+            if (window.CasinoSound) window.CasinoSound.chip(2);
             await post(`/casino/api/salon/${code}/round/dice/bet`, { bet_type: selectedType, amount });
             gameMsg.textContent = '';
             poll();

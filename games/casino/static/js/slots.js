@@ -63,9 +63,9 @@ window.CasinoGames.slots = function (root, code, myUserId) {
     async function playSpin(symbols) {
         spinning = true;
         await Promise.all([
-            spinStrip(strip1, symbols[0], 900),
-            spinStrip(strip2, symbols[1], 1150),
-            spinStrip(strip3, symbols[2], 1400),
+            spinStrip(strip1, symbols[0], 900).then(() => window.CasinoSound && window.CasinoSound.reelStop(0)),
+            spinStrip(strip2, symbols[1], 1150).then(() => window.CasinoSound && window.CasinoSound.reelStop(1)),
+            spinStrip(strip3, symbols[2], 1400).then(() => window.CasinoSound && window.CasinoSound.reelStop(2)),
         ]);
         spinning = false;
     }
@@ -125,10 +125,16 @@ window.CasinoGames.slots = function (root, code, myUserId) {
             `).join('');
             if (roundKey !== celebratedRoundKey) {
                 celebratedRoundKey = roundKey;
-                if (game.my_bet && game.my_bet.payout > 0) {
-                    slotCabinet.classList.add('win-glow');
-                    setTimeout(() => slotCabinet.classList.remove('win-glow'), 1100);
-                    window.CasinoFX.confetti(slotCabinet, game.my_bet.payout >= game.my_bet.amount * 10 ? 22 : 12);
+                if (game.my_bet) {
+                    if (game.my_bet.payout > 0) {
+                        const jackpotWin = game.my_bet.payout >= game.my_bet.amount * 10;
+                        slotCabinet.classList.add('win-glow');
+                        setTimeout(() => slotCabinet.classList.remove('win-glow'), 1100);
+                        window.CasinoFX.confetti(slotCabinet, jackpotWin ? 22 : 12);
+                        if (window.CasinoSound) jackpotWin ? window.CasinoSound.jackpot() : window.CasinoSound.win(false);
+                    } else if (window.CasinoSound) {
+                        window.CasinoSound.lose();
+                    }
                 }
             }
         } else {
@@ -150,6 +156,7 @@ window.CasinoGames.slots = function (root, code, myUserId) {
     placeBetBtn.addEventListener("click", async () => {
         const amount = parseInt(betAmount.value, 10);
         try {
+            if (window.CasinoSound) window.CasinoSound.chip(2);
             await post(`/casino/api/salon/${code}/round/slots/bet`, { bet_type: 'spin', amount });
             gameMsg.textContent = '';
             poll();

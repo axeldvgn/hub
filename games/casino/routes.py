@@ -342,8 +342,15 @@ def _ensure_bots(db, n):
     return rows[:max(n, len(rows))]
 
 
+BOT_FREE_GAMES = {"roulette", "dice", "slots"}  # jeux contre la banque : pas besoin d'adversaires
+
+
 def _fill_with_bots(db, table):
-    """Complète les sièges vides d'une table avec des bots (jusqu'à MAX_PLAYERS)."""
+    """Complète les sièges vides d'une table avec des bots (jusqu'à MAX_PLAYERS).
+    Inutile pour les jeux contre la banque (roulette/dés/machines à sous) : on y
+    joue seul contre un résultat partagé, pas besoin d'adversaires assis."""
+    if table["game_type"] in BOT_FREE_GAMES:
+        return
     count = db.execute(
         "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
     ).fetchone()["c"]
@@ -600,6 +607,12 @@ def salon_page(code):
     )
 
 
+@casino_bp.route("/stats")
+@login_required
+def stats_page():
+    return render_template("casino/stats.html", user=current_user())
+
+
 # ---------------------------------------------------------------------------
 # API — compte
 # ---------------------------------------------------------------------------
@@ -840,10 +853,18 @@ def api_salon_state(code):
         return jsonify(error="Vous ne faites pas partie de ce salon."), 403
     members = get_salon_members(salon["id"])
     my_seat_game = None
+    occupancy = {}
     for table in db.execute("SELECT * FROM tables WHERE salon_id = ?", (salon["id"],)):
         if get_my_seat(table["id"], user["id"]):
             my_seat_game = table["game_type"]
-            break
+        seated = db.execute(
+            """SELECT tp.seat, u.username, u.is_bot FROM table_players tp
+               JOIN users u ON u.id = tp.user_id WHERE tp.table_id = ? ORDER BY tp.seat ASC""",
+            (table["id"],),
+        ).fetchall()
+        occupancy[table["game_type"]] = [
+            {"seat": s["seat"], "username": s["username"], "is_bot": bool(s["is_bot"])} for s in seated
+        ]
     return jsonify({
         "code": salon["code"],
         "host_id": salon["host_id"],
@@ -851,6 +872,7 @@ def api_salon_state(code):
         "my_chips": user["chips"],
         "my_seat_game": my_seat_game,
         "members": [{"user_id": m["user_id"], "username": m["username"]} for m in members],
+        "tables": occupancy,
     })
 
 
@@ -1843,6 +1865,120 @@ def _blackjack_state(db, table_id, user_id):
             for p in players
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Statistiques et classement
+# ---------------------------------------------------------------------------
+
+def _compute_stats(db, user_id):
+    stats = {}
+
+    round_rows = db.execute(
+        """SELECT t.game_type AS game_type, COUNT(*) AS rounds_played,
+                  COALESCE(SUM(rb.amount), 0) AS wagered,
+                  COALESCE(SUM(rb.payout), 0) AS won,
+                  COALESCE(MAX(rb.payout), 0) AS biggest_win
+           FROM round_bets rb
+           JOIN rounds r ON r.id = rb.round_id
+           JOIN tables t ON t.id = r.table_id
+           WHERE rb.user_id = ? AND rb.payout IS NOT NULL
+           GROUP BY t.game_type""",
+        (user_id,),
+    ).fetchall()
+    by_game = {row["game_type"]: row for row in round_rows}
+    for gt in ("roulette", "dice", "slots"):
+        row = by_game.get(gt)
+        wagered = row["wagered"] if row else 0
+        won = row["won"] if row else 0
+        stats[gt] = {
+            "rounds_played": row["rounds_played"] if row else 0,
+            "wagered": wagered, "won": won, "net": won - wagered,
+            "biggest_win": row["biggest_win"] if row else 0,
+        }
+
+    bj_rows = db.execute(
+        """SELECT bhp.status, bhp.bet, bhp.cards, bh.dealer_cards
+           FROM blackjack_hand_players bhp JOIN blackjack_hands bh ON bh.id = bhp.hand_id
+           WHERE bhp.user_id = ? AND bhp.bet > 0 AND bh.phase = 'done'""",
+        (user_id,),
+    ).fetchall()
+    bj_wins = bj_wagered = bj_won = bj_biggest = 0
+    for row in bj_rows:
+        bet = row["bet"]
+        bj_wagered += bet
+        if row["status"] == "bust":
+            win = 0
+        else:
+            val = _bj_value(json.loads(row["cards"]))
+            dealer_val = _bj_value(json.loads(row["dealer_cards"]))
+            if row["status"] == "blackjack":
+                win = round(bet * 2.5)
+            elif dealer_val > 21 or val > dealer_val:
+                win = bet * 2
+            elif val == dealer_val:
+                win = bet
+            else:
+                win = 0
+        bj_won += win
+        if win > bet:
+            bj_wins += 1
+            bj_biggest = max(bj_biggest, win - bet)
+    stats["blackjack"] = {
+        "hands_played": len(bj_rows), "hands_won": bj_wins,
+        "wagered": bj_wagered, "won": bj_won, "net": bj_won - bj_wagered,
+        "biggest_win": bj_biggest,
+    }
+
+    poker_rows = db.execute(
+        """SELECT php.bet_total, ph.last_result
+           FROM poker_hand_players php JOIN poker_hands ph ON ph.id = php.hand_id
+           WHERE php.user_id = ? AND ph.phase = 'done'""",
+        (user_id,),
+    ).fetchall()
+    poker_wins = poker_wagered = 0
+    poker_won = 0.0
+    poker_biggest = 0.0
+    for row in poker_rows:
+        poker_wagered += row["bet_total"]
+        if not row["last_result"]:
+            continue
+        result = json.loads(row["last_result"])
+        hand_won = 0.0
+        for b in result.get("breakdown", []):
+            winner_ids = [w["user_id"] for w in b["winners"]]
+            if user_id in winner_ids:
+                hand_won += b["amount"] / len(winner_ids)
+        if hand_won > 0:
+            poker_wins += 1
+            poker_biggest = max(poker_biggest, hand_won)
+        poker_won += hand_won
+    stats["poker"] = {
+        "hands_played": len(poker_rows), "hands_won": poker_wins,
+        "wagered": poker_wagered, "won": round(poker_won), "net": round(poker_won - poker_wagered),
+        "biggest_win": round(poker_biggest),
+    }
+
+    return stats
+
+
+@casino_bp.route("/api/stats")
+@api_login_required
+def api_stats():
+    db = get_db()
+    user = current_user()
+    stats = _compute_stats(db, user["id"])
+    return jsonify(chips=user["chips"], username=user["username"], stats=stats)
+
+
+@casino_bp.route("/api/leaderboard")
+@api_login_required
+def api_leaderboard():
+    db = get_db()
+    rows = db.execute(
+        "SELECT username, chips FROM users WHERE is_bot = 0 ORDER BY chips DESC LIMIT 10"
+    ).fetchall()
+    return jsonify(leaderboard=[{"username": r["username"], "chips": r["chips"]} for r in rows])
 
 
 init_db()
