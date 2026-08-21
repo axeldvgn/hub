@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('casino.static', filename='css/style.css') }}">
-<link rel="stylesheet" href="{{ url_for('casino.static', filename='css/world3d.css') }}">
+<link rel="stylesheet" href="{{ url_for('casino.static', filename='css/style.css') }}?v={{ asset_v }}">
+<link rel="stylesheet" href="{{ url_for('casino.static', filename='css/world3d.css') }}?v={{ asset_v }}">
 </head>
 <body>
 
@@ -236,14 +236,14 @@ window.CASINO_SALON_CODE = {{ code|tojson }};
 window.CASINO_USER_ID = {{ user['id']|tojson }};
 window.CASINO_MY_SKIN_COLOR = {{ my_skin_color|tojson }};
 </script>
-<script src="{{ url_for('casino.static', filename='js/effects.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/sound.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/world3d.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/poker.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/roulette.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/blackjack.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/dice.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/slots.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/boutique.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/effects.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/sound.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/world3d.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/poker.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/roulette.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/blackjack.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/dice.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/slots.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('casino.static', filename='js/boutique.js') }}?v={{ asset_v }}"></script>
 </body>
 </html>

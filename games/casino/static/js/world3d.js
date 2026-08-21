@@ -268,31 +268,53 @@ function makeCharacter(colorHex){
   const group = new THREE.Group();
   const col = new THREE.Color(colorHex);
   const bodyMat = new THREE.MeshStandardMaterial({color:col, roughness:0.6, emissive:col.clone().multiplyScalar(0.15)});
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.34,0.5,12), bodyMat);
-  body.position.y = 0.75;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10), bodyMat);
-  head.position.y = 1.31;
+
+  // Bassin : relie les jambes au torse au lieu de les laisser flotter sous un cylindre unique.
+  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.22,0.22,12), bodyMat);
+  hips.position.y = 0.55;
+  hips.castShadow = true;
+
+  // Torse plus large aux epaules qu'a la taille, pour une silhouette humaine.
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.25,0.5,12), bodyMat);
+  torso.position.y = 0.9;
+  torso.castShadow = true;
+
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.14,10), bodyMat);
+  neck.position.y = 1.22;
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24,14,12), bodyMat);
+  head.position.y = 1.53;
+  head.castShadow = true;
   const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.3,0.3),
+    new THREE.PlaneGeometry(0.28,0.28),
     new THREE.MeshBasicMaterial({map:makeFaceTexture(), transparent:true, depthWrite:false, side:THREE.DoubleSide})
   );
-  face.position.set(0,1.32,0.25);
+  face.position.set(0,1.54,0.22);
 
-  function makeLimb(x, pivotY, length, radiusTop, radiusBottom){
+  function makeLimb(x, pivotY, length, radiusTop, radiusBottom, tipMesh){
     const pivot = new THREE.Group();
     pivot.position.set(x, pivotY, 0);
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, 8), bodyMat);
     mesh.castShadow = true;
     mesh.position.y = -length/2;
     pivot.add(mesh);
+    tipMesh.position.y = -length;
+    tipMesh.castShadow = true;
+    pivot.add(tipMesh);
     return pivot;
   }
-  const armL = makeLimb(-0.38, 1.0, 0.48, 0.07, 0.06);
-  const armR = makeLimb(0.38, 1.0, 0.48, 0.07, 0.06);
-  const legL = makeLimb(-0.14, 0.5, 0.5, 0.1, 0.08);
-  const legR = makeLimb(0.14, 0.5, 0.5, 0.1, 0.08);
+  const handL = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,8), bodyMat);
+  const handR = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,8), bodyMat);
+  const footL = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), bodyMat);
+  const footR = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), bodyMat);
+  const armL = makeLimb(-0.38, 1.08, 0.46, 0.07, 0.06, handL);
+  const armR = makeLimb(0.38, 1.08, 0.46, 0.07, 0.06, handR);
+  const legL = makeLimb(-0.14, 0.5, 0.5, 0.1, 0.08, footL);
+  const legR = makeLimb(0.14, 0.5, 0.5, 0.1, 0.08, footR);
+  footL.position.z = 0.05; footR.position.z = 0.05;
+  footL.position.y += 0.04; footR.position.y += 0.04;
 
-  group.add(body); group.add(head); group.add(face);
+  group.add(hips); group.add(torso); group.add(neck); group.add(head); group.add(face);
   group.add(armL); group.add(armR); group.add(legL); group.add(legR);
   group.userData.bodyMat = bodyMat;
   group.userData.armL = armL; group.userData.armR = armR;

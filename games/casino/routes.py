@@ -3,6 +3,7 @@ import os
 import random
 import sqlite3
 import string
+import time
 from datetime import datetime
 
 from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
@@ -27,6 +28,15 @@ casino_bp = Blueprint(
     static_folder="static",
     static_url_path="/static",
 )
+
+# Change a chaque redemarrage du process (donc a chaque deploy) pour forcer
+# les navigateurs a recharger les JS/CSS au lieu de servir une version en cache.
+ASSET_VERSION = str(int(time.time()))
+
+
+@casino_bp.context_processor
+def inject_asset_version():
+    return {"asset_v": ASSET_VERSION}
 
 GAME_TYPES = {
     "poker": "Poker (Texas Hold'em)",
