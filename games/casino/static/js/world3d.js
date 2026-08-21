@@ -487,9 +487,10 @@ function buildZoneDecor(z, wx, wz, ww, wh){
     const curved = new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.85,24,1,false,0,Math.PI), tableMat);
     curved.castShadow = true; curved.receiveShadow = true;
     tableGroup.add(curved);
-    // CylinderGeometry avec un arc partiel ne ferme pas la face plane coupee :
-    // on la bouche avec une plaque pour eviter le trou beant dans la table.
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(r*2,0.85,0.06), tableMat);
+    // CylinderGeometry avec thetaStart=0/thetaLength=PI balaie x=r*sin(theta), z=r*cos(theta) :
+    // la face plane coupee est donc dans le plan local x=0, sur toute la largeur en z.
+    // La plaque de fermeture doit etre fine en x et large en z (r*2), pas l'inverse.
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.85,r*2), tableMat);
     cap.castShadow = true; cap.receiveShadow = true;
     tableGroup.add(cap);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(r,0.045,8,24,Math.PI), woodMat);
