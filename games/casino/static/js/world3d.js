@@ -268,17 +268,35 @@ function makeCharacter(colorHex){
   const group = new THREE.Group();
   const col = new THREE.Color(colorHex);
   const bodyMat = new THREE.MeshStandardMaterial({color:col, roughness:0.6, emissive:col.clone().multiplyScalar(0.15)});
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.36,0.9,12), bodyMat);
-  body.position.y = 0.55;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28,12,10), bodyMat);
-  head.position.y = 1.15;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.34,0.5,12), bodyMat);
+  body.position.y = 0.75;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10), bodyMat);
+  head.position.y = 1.31;
   const face = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.32,0.32),
+    new THREE.PlaneGeometry(0.3,0.3),
     new THREE.MeshBasicMaterial({map:makeFaceTexture(), transparent:true, depthWrite:false, side:THREE.DoubleSide})
   );
-  face.position.set(0,1.16,0.27);
+  face.position.set(0,1.32,0.25);
+
+  function makeLimb(x, pivotY, length, radiusTop, radiusBottom){
+    const pivot = new THREE.Group();
+    pivot.position.set(x, pivotY, 0);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, 8), bodyMat);
+    mesh.castShadow = true;
+    mesh.position.y = -length/2;
+    pivot.add(mesh);
+    return pivot;
+  }
+  const armL = makeLimb(-0.38, 1.0, 0.48, 0.07, 0.06);
+  const armR = makeLimb(0.38, 1.0, 0.48, 0.07, 0.06);
+  const legL = makeLimb(-0.14, 0.5, 0.5, 0.1, 0.08);
+  const legR = makeLimb(0.14, 0.5, 0.5, 0.1, 0.08);
+
   group.add(body); group.add(head); group.add(face);
+  group.add(armL); group.add(armR); group.add(legL); group.add(legR);
   group.userData.bodyMat = bodyMat;
+  group.userData.armL = armL; group.userData.armR = armR;
+  group.userData.legL = legL; group.userData.legR = legR;
   return group;
 }
 function makeBlobShadow(){
@@ -565,18 +583,30 @@ function updatePrompt(){
   }
 }
 
+function swingLimbs(ud, walking, cycle, amp){
+  const swing = walking ? Math.sin(cycle)*amp : 0;
+  ud.armL.rotation.x = swing;
+  ud.armR.rotation.x = -swing;
+  ud.legL.rotation.x = -swing;
+  ud.legR.rotation.x = swing;
+}
+
 function renderThree(dt){
-  const pBob = player.speedMag>4 ? Math.abs(Math.sin(player.walkCycle))*0.09 : 0;
+  const pWalking = player.speedMag>4;
+  const pBob = pWalking ? Math.abs(Math.sin(player.walkCycle))*0.09 : 0;
   playerMesh.position.set(toWorldX(player.x), pBob, toWorldZ(player.y));
   playerMesh.rotation.y = Math.atan2(player.facing.x, player.facing.y);
-  playerMesh.rotation.z = player.speedMag>4 ? Math.sin(player.walkCycle*1.3)*0.05 : 0;
+  playerMesh.rotation.z = pWalking ? Math.sin(player.walkCycle*1.3)*0.05 : 0;
+  swingLimbs(playerMesh.userData, pWalking, player.walkCycle, 0.6);
   playerBlob.position.set(toWorldX(player.x), 0.015, toWorldZ(player.y));
 
   npcMeshes.forEach((mesh,i)=>{
     const n = npcs[i];
-    const bob = n.speedMag>3 ? Math.abs(Math.sin(n.walkCycle))*0.07 : 0;
+    const nWalking = n.speedMag>3;
+    const bob = nWalking ? Math.abs(Math.sin(n.walkCycle))*0.07 : 0;
     mesh.position.set(toWorldX(n.x), bob, toWorldZ(n.y));
-    if(n.speedMag > 3) mesh.rotation.y = Math.atan2(n.vx, n.vy);
+    if(nWalking) mesh.rotation.y = Math.atan2(n.vx, n.vy);
+    swingLimbs(mesh.userData, nWalking, n.walkCycle, 0.5);
     npcBlobs[i].position.set(toWorldX(n.x), 0.015, toWorldZ(n.y));
   });
 
