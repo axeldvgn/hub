@@ -27,7 +27,7 @@ createBtn.addEventListener("click", async () => {
             createBtn.disabled = false;
             return;
         }
-        window.location.href = `/casino/table/${json.code}/lobby`;
+        window.location.href = `/casino/table/${json.code}`;
     } catch (e) {
         errorEl.textContent = "Impossible de contacter le serveur.";
         createBtn.disabled = false;
@@ -51,7 +51,7 @@ document.getElementById("joinForm").addEventListener("submit", async (evt) => {
             errorEl.textContent = json.error || "Impossible de rejoindre cette table.";
             return;
         }
-        window.location.href = `/casino/table/${json.code}/lobby`;
+        window.location.href = `/casino/table/${json.code}`;
     } catch (e) {
         errorEl.textContent = "Impossible de contacter le serveur.";
     }

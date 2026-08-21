@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     chips INTEGER NOT NULL DEFAULT 1000,
+    is_bot INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
 );
 
@@ -165,6 +166,10 @@ CREATE TABLE IF NOT EXISTS blackjack_hand_players (
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
+    try:
+        db.execute("ALTER TABLE users ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # colonne déjà présente (base créée avec le schéma le plus récent)
     db.commit()
     db.close()
 
@@ -238,6 +243,219 @@ def rotate_from(seats, start_seat):
 
 
 # ---------------------------------------------------------------------------
+# Bots — remplissent les sièges vides pour qu'on puisse jouer seul
+# ---------------------------------------------------------------------------
+
+BOT_NAMES = ["Léa", "Max", "Sam", "Nina", "Théo", "Iris", "Noah", "Zoé"]
+BOT_BANKROLL = 1_000_000  # solde "infini" pour ne jamais bloquer une table par manque de jetons
+
+
+def _ensure_bots(db, n):
+    """Garantit qu'au moins n comptes-bots existent, les crée si besoin. Renvoie leurs lignes."""
+    rows = db.execute("SELECT * FROM users WHERE is_bot = 1 ORDER BY id ASC").fetchall()
+    if len(rows) < n:
+        for name in BOT_NAMES:
+            username = f"Bot {name}"
+            exists = db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+            if not exists:
+                db.execute(
+                    "INSERT INTO users (username, password_hash, chips, is_bot, created_at) "
+                    "VALUES (?, '', ?, 1, ?)",
+                    (username, BOT_BANKROLL, now()),
+                )
+            if db.execute("SELECT COUNT(*) c FROM users WHERE is_bot = 1", ).fetchone()["c"] >= n:
+                break
+        rows = db.execute("SELECT * FROM users WHERE is_bot = 1 ORDER BY id ASC").fetchall()
+    return rows[:max(n, len(rows))]
+
+
+def _fill_with_bots(db, table):
+    """Complète les sièges vides d'une table avec des bots (jusqu'à MAX_PLAYERS)."""
+    count = db.execute(
+        "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
+    ).fetchone()["c"]
+    missing = MAX_PLAYERS - count
+    if missing <= 0:
+        return
+    bots = _ensure_bots(db, missing)
+    used_ids = {r["user_id"] for r in db.execute(
+        "SELECT user_id FROM table_players WHERE table_id = ?", (table["id"],)
+    )}
+    available_bots = [b for b in bots if b["id"] not in used_ids]
+    for bot in available_bots[:missing]:
+        stack = min(POKER_BUYIN, bot["chips"]) if table["game_type"] == "poker" else 0
+        if stack:
+            db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, bot["id"]))
+        _seat_player(db, table["id"], bot["id"], stack)
+
+
+def _bot_replace_seat(db, table, human):
+    """Si la table est pleine mais contient un bot, et qu'on est entre deux mains/manches,
+    remplace ce bot par le joueur humain. Renvoie True si un siège a été libéré."""
+    bot_tp = db.execute(
+        """SELECT tp.* FROM table_players tp JOIN users u ON u.id = tp.user_id
+           WHERE tp.table_id = ? AND u.is_bot = 1 ORDER BY tp.seat ASC LIMIT 1""",
+        (table["id"],),
+    ).fetchone()
+    if not bot_tp:
+        return False
+    if not _table_is_between_hands(db, table):
+        return False
+    if bot_tp["stack"] > 0:
+        db.execute("UPDATE users SET chips = chips + ? WHERE id = ?", (bot_tp["stack"], bot_tp["user_id"]))
+    db.execute("DELETE FROM table_players WHERE id = ?", (bot_tp["id"],))
+    stack = 0
+    if table["game_type"] == "poker":
+        stack = min(POKER_BUYIN, human["chips"])
+        db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, human["id"]))
+    db.execute(
+        "INSERT INTO table_players (table_id, user_id, seat, stack, joined_at) VALUES (?, ?, ?, ?, ?)",
+        (table["id"], human["id"], bot_tp["seat"], stack, now()),
+    )
+    return True
+
+
+def _table_is_between_hands(db, table):
+    if table["game_type"] == "poker":
+        hand_row = db.execute(
+            "SELECT phase FROM poker_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1", (table["id"],)
+        ).fetchone()
+        return (not hand_row) or hand_row["phase"] == "done"
+    if table["game_type"] == "blackjack":
+        hand_row = db.execute(
+            "SELECT phase FROM blackjack_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1", (table["id"],)
+        ).fetchone()
+        return (not hand_row) or hand_row["phase"] in ("betting", "done")
+    round_row = db.execute(
+        "SELECT phase FROM rounds WHERE table_id = ? ORDER BY round_number DESC LIMIT 1", (table["id"],)
+    ).fetchone()
+    return (not round_row) or round_row["phase"] == "resolved"
+
+
+def _run_bot_turns(db, table):
+    """Fait agir tous les bots dont c'est le tour, en boucle, jusqu'à ce qu'il ne reste
+    plus que des humains à faire attendre (ou que la main/manche soit terminée)."""
+    game_type = table["game_type"]
+    for _ in range(40):  # garde-fou anti-boucle-infinie
+        acted = False
+        if game_type == "poker":
+            acted = _run_one_poker_bot(db, table)
+        elif game_type == "blackjack":
+            acted = _run_one_blackjack_bot(db, table)
+        elif game_type in ("roulette", "dice", "slots"):
+            acted = _run_one_round_bot(db, table)
+        if not acted:
+            break
+
+
+def _run_one_poker_bot(db, table):
+    hand_row = db.execute(
+        "SELECT * FROM poker_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1", (table["id"],)
+    ).fetchone()
+    if not hand_row or hand_row["phase"] == "done" or hand_row["turn_seat"] is None:
+        return False
+    tp = db.execute(
+        "SELECT * FROM table_players WHERE table_id = ? AND seat = ?", (table["id"], hand_row["turn_seat"])
+    ).fetchone()
+    bot_user = db.execute("SELECT * FROM users WHERE id = ? AND is_bot = 1", (tp["user_id"],)).fetchone()
+    if not bot_user:
+        return False
+    hand_players = _poker_players_for_hand(db, hand_row["id"])
+    me = next(p for p in hand_players if p["seat"] == tp["seat"])
+    action, amount = _bot_poker_decision(hand_row, me, tp["stack"])
+    _apply_poker_action(db, table["id"], hand_row, tp, action, amount)
+    return True
+
+
+def _bot_poker_decision(hand_row, me, stack):
+    to_call = hand_row["current_bet"] - me["bet_street"]
+    if to_call <= 0:
+        if random.random() < 0.75 or stack <= BIG_BLIND:
+            return "check", 0
+        return "bet", min(BIG_BLIND * random.choice([2, 3]), stack)
+    if to_call >= stack:
+        return ("call", 0) if random.random() < 0.5 else ("fold", 0)
+    pot_odds = to_call / max(1, hand_row["pot"] + to_call)
+    if pot_odds > 0.4 and random.random() < 0.45:
+        return "fold", 0
+    if random.random() < 0.12:
+        raise_amt = min(to_call + max(hand_row["min_raise"], BIG_BLIND), stack)
+        return "raise", raise_amt
+    return "call", 0
+
+
+def _run_one_blackjack_bot(db, table):
+    hand_row = db.execute(
+        "SELECT * FROM blackjack_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1", (table["id"],)
+    ).fetchone()
+    if not hand_row:
+        return False
+    if hand_row["phase"] == "betting":
+        players = db.execute(
+            "SELECT * FROM blackjack_hand_players WHERE hand_id = ?", (hand_row["id"],)
+        ).fetchall()
+        for p in players:
+            bot_user = db.execute("SELECT * FROM users WHERE id = ? AND is_bot = 1", (p["user_id"],)).fetchone()
+            if bot_user and p["bet"] == 0:
+                amount = min(random.choice([20, 30, 50]), bot_user["chips"])
+                if amount <= 0:
+                    continue
+                _apply_blackjack_bet(db, table, hand_row, bot_user, amount)
+                return True
+        return False
+    if hand_row["phase"] != "playing" or hand_row["turn_seat"] is None:
+        return False
+    tp = db.execute(
+        "SELECT * FROM table_players WHERE table_id = ? AND seat = ?", (table["id"], hand_row["turn_seat"])
+    ).fetchone()
+    bot_user = db.execute("SELECT * FROM users WHERE id = ? AND is_bot = 1", (tp["user_id"],)).fetchone()
+    if not bot_user:
+        return False
+    hp = db.execute(
+        "SELECT * FROM blackjack_hand_players WHERE hand_id = ? AND user_id = ?", (hand_row["id"], bot_user["id"])
+    ).fetchone()
+    value = _bj_value(json.loads(hp["cards"]))
+    action = "hit" if value < 17 else "stand"
+    _apply_blackjack_action(db, table["id"], hand_row, tp, bot_user["id"], action)
+    return True
+
+
+def _run_one_round_bot(db, table):
+    round_row = db.execute(
+        "SELECT * FROM rounds WHERE table_id = ? ORDER BY round_number DESC LIMIT 1", (table["id"],)
+    ).fetchone()
+    if not round_row or round_row["phase"] != "betting":
+        return False
+    seated = db.execute(
+        """SELECT tp.user_id FROM table_players tp JOIN users u ON u.id = tp.user_id
+           WHERE tp.table_id = ? AND u.is_bot = 1""",
+        (table["id"],),
+    ).fetchall()
+    already_bet = {b["user_id"] for b in db.execute(
+        "SELECT user_id FROM round_bets WHERE round_id = ?", (round_row["id"],)
+    )}
+    for row in seated:
+        if row["user_id"] in already_bet:
+            continue
+        bot_user = db.execute("SELECT * FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+        bet_type, bet_value, amount = _bot_round_bet(table["game_type"], bot_user["chips"])
+        _apply_round_bet(db, table, bot_user, bet_type, bet_value, amount)
+        return True
+    return False
+
+
+def _bot_round_bet(game_type, chips):
+    amount = min(random.choice([20, 30, 50, 100]), max(10, chips))
+    if game_type == "roulette":
+        bet_type = random.choice(["red", "black", "even", "odd", "low", "high", "number"])
+        bet_value = random.randint(0, 36) if bet_type == "number" else None
+        return bet_type, bet_value, amount
+    if game_type == "dice":
+        return random.choice(["petit", "grand", "sept"]), None, amount
+    return "spin", None, amount
+
+
+# ---------------------------------------------------------------------------
 # Pages
 # ---------------------------------------------------------------------------
 
@@ -275,8 +493,12 @@ def table_page(code):
         return redirect(url_for("casino.home"))
     if table["status"] == "waiting":
         return redirect(url_for("casino.lobby_page", code=code))
-    template = f"casino/table_{table['game_type']}.html"
-    return render_template(template, code=table["code"], user=current_user())
+    icons = {"poker": "♠️", "roulette": "🎡", "blackjack": "🃏", "dice": "🎲", "slots": "🎰"}
+    return render_template(
+        "casino/table_3d.html", code=table["code"], user=current_user(),
+        game_type=table["game_type"], game_icon=icons.get(table["game_type"], "🎲"),
+        game_label=GAME_TYPES.get(table["game_type"], table["game_type"]),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +561,19 @@ def _seat_player(db, table_id, user_id, stack=0):
     return seat
 
 
+def _launch_table(db, table):
+    """Démarre la partie (statut playing + première main/manche + rattrapage des bots)."""
+    table_id, game_type = table["id"], table["game_type"]
+    db.execute("UPDATE tables SET status = 'playing' WHERE id = ?", (table_id,))
+    if game_type == "poker":
+        _start_poker_hand(db, table_id)
+    elif game_type == "blackjack":
+        _start_blackjack_hand(db, table_id)
+    else:
+        _start_round(db, table_id)
+    _run_bot_turns(db, table)
+
+
 @casino_bp.route("/api/table/create", methods=["POST"])
 @api_login_required
 def api_create_table():
@@ -361,6 +596,9 @@ def api_create_table():
         stack = min(POKER_BUYIN, user["chips"])
         db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, user["id"]))
     _seat_player(db, table_id, user["id"], stack)
+    table = db.execute("SELECT * FROM tables WHERE id = ?", (table_id,)).fetchone()
+    _fill_with_bots(db, table)
+    _launch_table(db, table)
     db.commit()
     return jsonify(ok=True, code=code)
 
@@ -384,7 +622,11 @@ def api_join_table():
         "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
     ).fetchone()["c"]
     if count >= MAX_PLAYERS:
-        return jsonify(error="Cette table est complète (5 joueurs max)."), 400
+        if not _bot_replace_seat(db, table, user):
+            return jsonify(error="Cette table est complète. Réessayez entre deux manches "
+                                  "pour prendre la place d'un bot."), 400
+        db.commit()
+        return jsonify(ok=True, code=table["code"])
     stack = 0
     if table["game_type"] == "poker":
         if user["chips"] < 20:
@@ -457,14 +699,7 @@ def api_start_table(code):
     players = get_table_players(table["id"])
     if len(players) < 2:
         return jsonify(error="Il faut au moins 2 joueurs pour démarrer."), 400
-    db.execute("UPDATE tables SET status = 'playing' WHERE id = ?", (table["id"],))
-    db.commit()
-    if table["game_type"] == "poker":
-        _start_poker_hand(db, table["id"])
-    elif table["game_type"] == "blackjack":
-        _start_blackjack_hand(db, table["id"])
-    else:
-        _start_round(db, table["id"])
+    _launch_table(db, table)
     db.commit()
     return jsonify(ok=True)
 
@@ -481,6 +716,11 @@ def api_table_state(code):
     my_tp = next((p for p in players if p["user_id"] == user["id"]), None)
     if not my_tp:
         return jsonify(error="Vous ne faites pas partie de cette table."), 403
+
+    if table["status"] == "playing":
+        _run_bot_turns(db, table)
+        db.commit()
+        players = get_table_players(table["id"])
 
     payload = {
         "code": table["code"],
@@ -747,13 +987,25 @@ def api_poker_action(code):
     if hand_row["turn_seat"] != tp["seat"]:
         return jsonify(error="Ce n'est pas votre tour."), 400
 
+    data = request.get_json(force=True)
+    action = data.get("action")
+    amount = int(data.get("amount") or 0)
+    error = _apply_poker_action(db, table["id"], hand_row, tp, action, amount)
+    if error:
+        return jsonify(error=error), 400
+    _run_bot_turns(db, table)
+    db.commit()
+    return jsonify(ok=True)
+
+
+def _apply_poker_action(db, table_id, hand_row, tp, action, amount):
+    """Applique une action de poker (fold/check/call/bet/raise) pour le siège tp,
+    fait avancer le tour/la rue si besoin. Retourne un message d'erreur (str) ou None.
+    Utilisé à la fois par la route HTTP et par le moteur de bots."""
     hand_players = _poker_players_for_hand(db, hand_row["id"])
     by_seat = {p["seat"]: p for p in hand_players}
     me = by_seat[tp["seat"]]
 
-    data = request.get_json(force=True)
-    action = data.get("action")
-    amount = int(data.get("amount") or 0)
     current_bet = hand_row["current_bet"]
     to_call = current_bet - me["bet_street"]
     stack = tp["stack"]
@@ -763,7 +1015,7 @@ def api_poker_action(code):
         me = dict(me); me["status"] = "folded"; me["has_acted"] = 1
     elif action == "check":
         if to_call > 0:
-            return jsonify(error="Vous devez suivre ou vous coucher."), 400
+            return "Vous devez suivre ou vous coucher."
         db.execute("UPDATE poker_hand_players SET has_acted = 1 WHERE id = ?", (me["id"],))
         me = dict(me); me["has_acted"] = 1
     elif action == "call":
@@ -779,12 +1031,12 @@ def api_poker_action(code):
         me = dict(me); me["bet_street"] += pay; me["bet_total"] += pay; me["status"] = new_status; me["has_acted"] = 1
     elif action in ("bet", "raise"):
         if amount <= 0 or amount > stack:
-            return jsonify(error="Montant invalide."), 400
+            return "Montant invalide."
         target_total = me["bet_street"] + amount
         is_all_in = amount == stack
         min_needed = BIG_BLIND if current_bet == 0 else hand_row["min_raise"]
         if not is_all_in and (target_total - current_bet) < min_needed:
-            return jsonify(error=f"La relance minimum est de {min_needed} jetons."), 400
+            return f"La relance minimum est de {min_needed} jetons."
         new_stack = stack - amount
         new_status = "all_in" if is_all_in else me["status"]
         db.execute("UPDATE table_players SET stack = ? WHERE id = ?", (new_stack, tp["id"]))
@@ -805,16 +1057,15 @@ def api_poker_action(code):
             )
         me = dict(me); me["bet_street"] = target_total; me["bet_total"] += amount; me["status"] = new_status; me["has_acted"] = 1
     else:
-        return jsonify(error="Action inconnue."), 400
+        return "Action inconnue."
 
     hand_row = db.execute("SELECT * FROM poker_hands WHERE id = ?", (hand_row["id"],)).fetchone()
     hand_players = _poker_players_for_hand(db, hand_row["id"])
     non_folded = [p for p in hand_players if p["status"] != "folded"]
 
     if len(non_folded) == 1:
-        _finish_poker_hand(db, table["id"], hand_row, hand_players, json.loads(hand_row["community_cards"]))
-        db.commit()
-        return jsonify(ok=True)
+        _finish_poker_hand(db, table_id, hand_row, hand_players, json.loads(hand_row["community_cards"]))
+        return None
 
     seats = sorted(p["seat"] for p in hand_players)
     rotated = rotate_from(seats, hand_row["dealer_seat"])
@@ -824,9 +1075,7 @@ def api_poker_action(code):
         _advance_poker_street(db, hand_row, hand_players)
     else:
         db.execute("UPDATE poker_hands SET turn_seat = ? WHERE id = ?", (next_seat, hand_row["id"]))
-
-    db.commit()
-    return jsonify(ok=True)
+    return None
 
 
 @casino_bp.route("/api/table/<code>/poker/next-hand", methods=["POST"])
@@ -845,6 +1094,7 @@ def api_poker_next_hand(code):
     if hand_row and hand_row["phase"] != "done":
         return jsonify(error="La main en cours n'est pas terminée."), 400
     _start_poker_hand(db, table["id"])
+    _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
@@ -996,22 +1246,33 @@ def api_round_bet(code):
     tp = get_my_seat(table["id"], user["id"])
     if not tp:
         return jsonify(error="Vous n'êtes pas à cette table."), 403
-    round_row = db.execute(
-        "SELECT * FROM rounds WHERE table_id = ? ORDER BY round_number DESC LIMIT 1", (table["id"],)
-    ).fetchone()
-    if not round_row or round_row["phase"] != "betting":
-        return jsonify(error="Les mises ne sont pas ouvertes."), 400
-    already = db.execute(
-        "SELECT 1 FROM round_bets WHERE round_id = ? AND user_id = ?", (round_row["id"], user["id"])
-    ).fetchone()
-    if already:
-        return jsonify(error="Vous avez déjà misé sur cette manche."), 400
     data = request.get_json(force=True)
     amount = int(data.get("amount") or 0)
     bet_type = data.get("bet_type") or "spin"
     bet_value = data.get("bet_value")
+    error = _apply_round_bet(db, table, user, bet_type, bet_value, amount)
+    if error:
+        return jsonify(error=error), 400
+    _run_bot_turns(db, table)
+    db.commit()
+    return jsonify(ok=True)
+
+
+def _apply_round_bet(db, table, user, bet_type, bet_value, amount):
+    """Place une mise pour user sur la manche en cours (roulette/dés/slots).
+    Retourne un message d'erreur (str) ou None. Utilisé par la route HTTP et les bots."""
+    round_row = db.execute(
+        "SELECT * FROM rounds WHERE table_id = ? ORDER BY round_number DESC LIMIT 1", (table["id"],)
+    ).fetchone()
+    if not round_row or round_row["phase"] != "betting":
+        return "Les mises ne sont pas ouvertes."
+    already = db.execute(
+        "SELECT 1 FROM round_bets WHERE round_id = ? AND user_id = ?", (round_row["id"], user["id"])
+    ).fetchone()
+    if already:
+        return "Vous avez déjà misé sur cette manche."
     if amount <= 0 or amount > user["chips"]:
-        return jsonify(error="Mise invalide."), 400
+        return "Mise invalide."
     db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (amount, user["id"]))
     db.execute(
         "INSERT INTO round_bets (round_id, user_id, bet_type, bet_value, amount) VALUES (?, ?, ?, ?, ?)",
@@ -1023,8 +1284,7 @@ def api_round_bet(code):
     ).fetchone()["c"]
     if bet_count >= len(players):
         _resolve_round(db, table, round_row)
-    db.commit()
-    return jsonify(ok=True)
+    return None
 
 
 @casino_bp.route("/api/table/<code>/round/resolve", methods=["POST"])
@@ -1043,6 +1303,7 @@ def api_round_resolve(code):
     if not round_row or round_row["phase"] != "betting":
         return jsonify(ok=True)
     _resolve_round(db, table, round_row)
+    _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
@@ -1063,6 +1324,7 @@ def api_round_next(code):
     if round_row and round_row["phase"] != "resolved":
         return jsonify(error="La manche en cours n'est pas terminée."), 400
     _start_round(db, table["id"])
+    _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
@@ -1249,13 +1511,24 @@ def api_blackjack_bet(code):
         return jsonify(error="Les mises ne sont pas ouvertes."), 400
     data = request.get_json(force=True)
     amount = int(data.get("amount") or 0)
+    error = _apply_blackjack_bet(db, table, hand_row, user, amount)
+    if error:
+        return jsonify(error=error), 400
+    _run_bot_turns(db, table)
+    db.commit()
+    return jsonify(ok=True)
+
+
+def _apply_blackjack_bet(db, table, hand_row, user, amount):
+    """Place la mise de user pour la main de blackjack en cours. Retourne un message
+    d'erreur (str) ou None. Utilisé par la route HTTP et les bots."""
     if amount <= 0 or amount > user["chips"]:
-        return jsonify(error="Mise invalide."), 400
+        return "Mise invalide."
     hp = db.execute(
         "SELECT * FROM blackjack_hand_players WHERE hand_id = ? AND user_id = ?", (hand_row["id"], user["id"])
     ).fetchone()
     if not hp or hp["bet"] > 0:
-        return jsonify(error="Mise déjà placée."), 400
+        return "Mise déjà placée."
     db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (amount, user["id"]))
     db.execute("UPDATE blackjack_hand_players SET bet = ? WHERE id = ?", (amount, hp["id"]))
     players = get_table_players(table["id"])
@@ -1264,8 +1537,7 @@ def api_blackjack_bet(code):
     ).fetchone()["c"]
     if bet_count >= len(players):
         _bj_deal(db, hand_row)
-    db.commit()
-    return jsonify(ok=True)
+    return None
 
 
 @casino_bp.route("/api/table/<code>/blackjack/force-deal", methods=["POST"])
@@ -1284,6 +1556,7 @@ def api_blackjack_force_deal(code):
     if not hand_row or hand_row["phase"] != "betting":
         return jsonify(ok=True)
     _bj_deal(db, hand_row)
+    _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
@@ -1304,11 +1577,22 @@ def api_blackjack_action(code):
     ).fetchone()
     if not hand_row or hand_row["phase"] != "playing" or hand_row["turn_seat"] != tp["seat"]:
         return jsonify(error="Ce n'est pas votre tour."), 400
-    hp = db.execute(
-        "SELECT * FROM blackjack_hand_players WHERE hand_id = ? AND user_id = ?", (hand_row["id"], user["id"])
-    ).fetchone()
     data = request.get_json(force=True)
     action = data.get("action")
+    error = _apply_blackjack_action(db, table["id"], hand_row, tp, user["id"], action)
+    if error:
+        return jsonify(error=error), 400
+    _run_bot_turns(db, table)
+    db.commit()
+    return jsonify(ok=True)
+
+
+def _apply_blackjack_action(db, table_id, hand_row, tp, user_id, action):
+    """Applique hit/stand pour user_id au blackjack, avance le tour ou résout la main.
+    Retourne un message d'erreur (str) ou None. Utilisé par la route HTTP et les bots."""
+    hp = db.execute(
+        "SELECT * FROM blackjack_hand_players WHERE hand_id = ? AND user_id = ?", (hand_row["id"], user_id)
+    ).fetchone()
     deck = json.loads(hand_row["deck"])
     cards = json.loads(hp["cards"])
 
@@ -1326,15 +1610,14 @@ def api_blackjack_action(code):
         db.execute("UPDATE blackjack_hand_players SET status = 'stand' WHERE id = ?", (hp["id"],))
         finished_turn = True
     else:
-        return jsonify(error="Action inconnue."), 400
+        return "Action inconnue."
 
     if finished_turn:
         next_seat = _bj_advance_turn(db, hand_row["id"], tp["seat"])
         db.execute("UPDATE blackjack_hands SET turn_seat = ? WHERE id = ?", (next_seat, hand_row["id"]))
         if next_seat is None:
-            _bj_resolve(db, table["id"], hand_row["id"])
-    db.commit()
-    return jsonify(ok=True)
+            _bj_resolve(db, table_id, hand_row["id"])
+    return None
 
 
 @casino_bp.route("/api/table/<code>/blackjack/next", methods=["POST"])
@@ -1353,6 +1636,7 @@ def api_blackjack_next(code):
     if hand_row and hand_row["phase"] not in ("done",):
         return jsonify(error="La main en cours n'est pas terminée."), 400
     _start_blackjack_hand(db, table["id"])
+    _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
