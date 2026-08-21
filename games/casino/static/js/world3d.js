@@ -310,6 +310,229 @@ function makeBlobShadow(){
   return mesh;
 }
 
+// ---------------------------------------------------------------------------
+// Décors spécifiques par jeu — chaque table a son propre mobilier détaillé
+// ---------------------------------------------------------------------------
+const wheelSpins = [];
+
+function makeChipStack(x,y,z,colors){
+  const group = new THREE.Group();
+  colors.forEach((color,i)=>{
+    const chip = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.022,16), new THREE.MeshStandardMaterial({color, roughness:0.35, metalness:0.25}));
+    chip.position.y = i*0.024;
+    chip.castShadow = true;
+    group.add(chip);
+  });
+  group.position.set(x,y,z);
+  scene.add(group);
+  return group;
+}
+function makeCardDeck(x,y,z,rotY){
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.26,0.05,0.38), new THREE.MeshStandardMaterial({color:0xf5f0e6, roughness:0.5}));
+  deck.position.set(x,y,z);
+  deck.rotation.y = rotY||0;
+  deck.castShadow = true; deck.receiveShadow = true;
+  scene.add(deck);
+  const topCard = new THREE.Mesh(new THREE.PlaneGeometry(0.24,0.36), new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.4}));
+  topCard.rotation.x = -Math.PI/2;
+  topCard.rotation.z = rotY||0;
+  topCard.position.set(x, y+0.026, z);
+  scene.add(topCard);
+}
+function makeDie(x,y,z,size){
+  const die = new THREE.Mesh(new THREE.BoxGeometry(size,size,size), new THREE.MeshStandardMaterial({color:0xf5f0e6, roughness:0.4}));
+  die.position.set(x,y,z);
+  die.rotation.set(Math.random()*0.6-0.3, Math.random()*Math.PI, Math.random()*0.6-0.3);
+  die.castShadow = true;
+  scene.add(die);
+}
+function makeWheelTexture(){
+  const c = document.createElement('canvas'); c.width=256; c.height=256;
+  const cx = c.getContext('2d');
+  cx.translate(128,128);
+  const slices = 37;
+  for(let i=0;i<slices;i++){
+    const a0 = (i/slices)*Math.PI*2, a1 = ((i+1)/slices)*Math.PI*2;
+    cx.beginPath(); cx.moveTo(0,0); cx.arc(0,0,124,a0,a1); cx.closePath();
+    cx.fillStyle = i===0 ? '#0b6e46' : (i%2===0 ? '#7a1224' : '#161616');
+    cx.fill();
+  }
+  cx.strokeStyle = '#d4af37'; cx.lineWidth = 5;
+  cx.beginPath(); cx.arc(0,0,124,0,Math.PI*2); cx.stroke();
+  cx.fillStyle = '#d4af37';
+  cx.beginPath(); cx.arc(0,0,18,0,Math.PI*2); cx.fill();
+  return new THREE.CanvasTexture(c);
+}
+function makeSlotScreenTexture(){
+  const c = document.createElement('canvas'); c.width=128; c.height=96;
+  const cx = c.getContext('2d');
+  cx.fillStyle = '#0d0616'; cx.fillRect(0,0,128,96);
+  const symbols = ['🍒','⭐','7️⃣','🔔'];
+  cx.font = '38px sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  for(let i=0;i<3;i++){
+    cx.fillText(symbols[Math.floor(Math.random()*symbols.length)], 21+i*43, 48);
+  }
+  cx.strokeStyle = '#f3d67a'; cx.lineWidth=3; cx.strokeRect(2,2,124,92);
+  return new THREE.CanvasTexture(c);
+}
+function makeSlotMachine(x,z,rotY){
+  const group = new THREE.Group();
+  const cabinet = new THREE.Mesh(new THREE.BoxGeometry(0.62,1.5,0.55), new THREE.MeshStandardMaterial({color:0x2a1030, roughness:0.5, metalness:0.3}));
+  cabinet.position.y = 0.75; cabinet.castShadow = true; cabinet.receiveShadow = true;
+  group.add(cabinet);
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.44,0.32), new THREE.MeshStandardMaterial({map:makeSlotScreenTexture(), emissive:0x552244, emissiveIntensity:0.4}));
+  screen.position.set(0,1.05,0.28);
+  group.add(screen);
+  const marquee = new THREE.Mesh(new THREE.BoxGeometry(0.64,0.18,0.58), new THREE.MeshStandardMaterial({color:0xf3d67a, emissive:0xf3d67a, emissiveIntensity:0.9}));
+  marquee.position.y = 1.6;
+  group.add(marquee);
+  const armPivot = new THREE.Group();
+  armPivot.position.set(0.33,1.15,0.05);
+  const lever = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.32,6), new THREE.MeshStandardMaterial({color:0xd4af37, metalness:0.7, roughness:0.3}));
+  lever.position.y = -0.16;
+  armPivot.add(lever);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8), new THREE.MeshStandardMaterial({color:0xe0335c, emissive:0xe0335c, emissiveIntensity:0.6}));
+  armPivot.add(knob);
+  armPivot.rotation.z = 0.35;
+  group.add(armPivot);
+  group.position.set(x,0,z);
+  group.rotation.y = rotY||0;
+  scene.add(group);
+}
+function makeClothingRack(x,z,rotY){
+  const group = new THREE.Group();
+  const legMat = new THREE.MeshStandardMaterial({color:0x8a6d1f, metalness:0.6, roughness:0.3});
+  [-0.55,0.55].forEach(dx=>{
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1.5,8), legMat);
+    leg.position.set(dx,0.75,0);
+    group.add(leg);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.14,0.03,12), legMat);
+    foot.position.set(dx,0.02,0);
+    group.add(foot);
+  });
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,1.2,8), legMat);
+  bar.rotation.z = Math.PI/2;
+  bar.position.set(0,1.45,0);
+  group.add(bar);
+  const garmentColors = [0xf3d67a,0x1d9e75,0x378add,0x7f77dd,0xd85a30];
+  garmentColors.forEach((color,i)=>{
+    const gx = -0.5 + i*0.25;
+    const hanger = new THREE.Mesh(new THREE.ConeGeometry(0.03,0.06,6), legMat);
+    hanger.position.set(gx,1.4,0);
+    group.add(hanger);
+    const garment = new THREE.Mesh(new THREE.ConeGeometry(0.14,0.42,8), new THREE.MeshStandardMaterial({color, roughness:0.6}));
+    garment.position.set(gx,1.14,0);
+    garment.castShadow = true;
+    group.add(garment);
+  });
+  group.position.set(x,0,z);
+  group.rotation.y = rotY||0;
+  scene.add(group);
+}
+function makeMirror(x,z,rotY){
+  const group = new THREE.Group();
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(0.7,1.5,0.06), new THREE.MeshStandardMaterial({color:0xd4af37, roughness:0.3, metalness:0.6}));
+  frame.position.y = 0.85;
+  group.add(frame);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.56,1.34), new THREE.MeshStandardMaterial({color:0xbfd8ff, roughness:0.05, metalness:0.9, emissive:0x1a2a44, emissiveIntensity:0.3}));
+  glass.position.set(0,0.85,0.035);
+  group.add(glass);
+  const standBase = new THREE.Mesh(new THREE.CylinderGeometry(0.28,0.32,0.06,16), new THREE.MeshStandardMaterial({color:0xd4af37, metalness:0.5}));
+  standBase.position.y = 0.03;
+  group.add(standBase);
+  group.position.set(x,0,z);
+  group.rotation.y = rotY||0;
+  scene.add(group);
+}
+function makeMannequin(x,z){
+  const group = new THREE.Group();
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,1.0,8), new THREE.MeshStandardMaterial({color:0x8a6d1f, metalness:0.5}));
+  stand.position.y = 0.5;
+  group.add(stand);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.18,0.04,16), new THREE.MeshStandardMaterial({color:0x2a1a3d}));
+  base.position.y = 0.02;
+  group.add(base);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.2,0.55,12), new THREE.MeshStandardMaterial({color:0xe8d9c0, roughness:0.6}));
+  torso.position.y = 1.28;
+  torso.castShadow = true;
+  group.add(torso);
+  group.position.set(x,0,z);
+  scene.add(group);
+}
+
+function buildZoneDecor(z, wx, wz, ww, wh){
+  const woodMat = new THREE.MeshStandardMaterial({color:0x3b2412, roughness:0.5, metalness:0.1});
+  const railMat = new THREE.MeshStandardMaterial({color:0xd4af37, roughness:0.35, metalness:0.6});
+
+  if(z.id === 'roulette'){
+    const r = Math.min(ww,wh)*0.32;
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(r,r*1.05,0.85,28), woodMat);
+    base.position.set(wx,0.425,wz); base.castShadow = true; base.receiveShadow = true; scene.add(base);
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(r,0.04,8,28), railMat);
+    rail.rotation.x = Math.PI/2; rail.position.set(wx,0.85,wz); scene.add(rail);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(r*0.65,r*0.65,0.08,28), new THREE.MeshStandardMaterial({map:makeWheelTexture(), roughness:0.4, metalness:0.3}));
+    wheel.position.set(wx,0.9,wz); wheel.castShadow = true; scene.add(wheel);
+    wheelSpins.push(wheel);
+    const hub = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.14,10), railMat);
+    hub.position.set(wx,1.01,wz); scene.add(hub);
+    makeChipStack(wx-r*0.9, 0.87, wz-r*0.4, [0xe0335c,0xf3d67a,0x2ff1ff]);
+    makeChipStack(wx+r*0.9, 0.87, wz+r*0.4, [0x8e6bff,0xffd166,0x5cd6c0]);
+
+  } else if(z.id === 'blackjack'){
+    const r = Math.min(ww,wh)*0.34;
+    const half = new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.85,24,1,false,0,Math.PI), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.6}));
+    half.position.set(wx,0.425,wz); half.rotation.y = Math.PI/2; half.castShadow = true; half.receiveShadow = true; scene.add(half);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r,0.045,8,24,Math.PI), woodMat);
+    rim.rotation.x = Math.PI/2; rim.rotation.z = Math.PI/2; rim.position.set(wx,0.85,wz); scene.add(rim);
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.22), woodMat);
+    shoe.position.set(wx, 0.95, wz - r*0.6);
+    shoe.rotation.x = -0.3;
+    scene.add(shoe);
+    makeCardDeck(wx, 0.89, wz - r*0.55, 0);
+    makeChipStack(wx-r*0.5, 0.87, wz+r*0.5, [0xe0335c,0xf3d67a]);
+    makeChipStack(wx+r*0.5, 0.87, wz+r*0.5, [0x2ff1ff,0x8e6bff]);
+
+  } else if(z.id === 'dice'){
+    const table = new THREE.Mesh(new THREE.BoxGeometry(ww*0.62,0.8,wh*0.5), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.7}));
+    table.position.set(wx,0.4,wz); table.castShadow = true; table.receiveShadow = true; scene.add(table);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(ww*0.66,0.14,wh*0.54), railMat);
+    rail.position.set(wx,0.83,wz); scene.add(rail);
+    const backboard = new THREE.Mesh(new THREE.BoxGeometry(ww*0.6,0.5,0.06), woodMat);
+    backboard.position.set(wx,0.9,wz - wh*0.22); scene.add(backboard);
+    makeDie(wx-0.3, 0.86, wz+0.15, 0.16);
+    makeDie(wx+0.15, 0.86, wz-0.05, 0.16);
+    makeChipStack(wx+ww*0.22, 0.85, wz+wh*0.15, [0xffd166,0xe0335c,0x2ff1ff]);
+
+  } else if(z.id === 'poker'){
+    const rx = ww*0.34, rz = wh*0.26;
+    const table = new THREE.Mesh(new THREE.CylinderGeometry(1,1,0.85,28), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.55}));
+    table.scale.set(rx,1,rz);
+    table.position.set(wx,0.425,wz); table.castShadow = true; table.receiveShadow = true; scene.add(table);
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(1,0.09,8,28), new THREE.MeshStandardMaterial({color:0x5c3a1e, roughness:0.6}));
+    rail.rotation.x = Math.PI/2; rail.scale.set(rx,rz,1); rail.position.set(wx,0.83,wz); scene.add(rail);
+    makeCardDeck(wx, 0.89, wz, 0.3);
+    const button = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.02,16), new THREE.MeshStandardMaterial({color:0xffffff}));
+    button.position.set(wx+0.3, 0.87, wz+0.2); scene.add(button);
+    makeChipStack(wx-rx*0.55, 0.87, wz-rz*0.5, [0xe0335c,0x2ff1ff,0xf3d67a]);
+    makeChipStack(wx+rx*0.55, 0.87, wz+rz*0.5, [0x8e6bff,0x5cd6c0,0xffd166]);
+    makeChipStack(wx, 0.87, wz-rz*0.75, [0xf3d67a,0xe0335c]);
+
+  } else if(z.id === 'slots'){
+    [[-ww*0.28,-wh*0.15],[0,-wh*0.22],[ww*0.28,-wh*0.15]].forEach(([dx,dz])=>{
+      makeSlotMachine(wx+dx, wz+dz, 0);
+    });
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(ww*0.5,0.6,wh*0.22), woodMat);
+    counter.position.set(wx,0.3,wz+wh*0.28); counter.castShadow = true; counter.receiveShadow = true; scene.add(counter);
+    makeChipStack(wx-ww*0.15, 0.62, wz+wh*0.28, [0xf3d67a,0xe0335c]);
+    makeChipStack(wx+ww*0.15, 0.62, wz+wh*0.28, [0x2ff1ff,0x8e6bff]);
+
+  } else if(z.id === 'boutique'){
+    makeClothingRack(wx-ww*0.2, wz+wh*0.15, 0);
+    makeMirror(wx+ww*0.28, wz, 0);
+    makeMannequin(wx, wz-wh*0.25);
+  }
+}
+
 const container = document.getElementById('floorContainer');
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(container.clientWidth||900, container.clientHeight||600);
@@ -435,14 +658,7 @@ zones.forEach(z=>{
   spot.position.set(wx, WALL_HEIGHT-0.02, wz);
   scene.add(spot);
 
-  const tableGeo = new THREE.BoxGeometry(ww*0.5, 0.85, wh*0.5);
-  const table = new THREE.Mesh(tableGeo, new THREE.MeshStandardMaterial({color:z.felt, roughness:0.5, metalness:0.1}));
-  table.position.set(wx, 0.425, wz);
-  table.castShadow = true; table.receiveShadow = true;
-  scene.add(table);
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(tableGeo), new THREE.LineBasicMaterial({color:0xd4af37}));
-  edges.position.copy(table.position);
-  scene.add(edges);
+  buildZoneDecor(z, wx, wz, ww, wh);
 
   const label = makeLabelSprite(z.icon, z.name);
   label.position.set(wx, 2.35, wz);
@@ -592,6 +808,7 @@ function swingLimbs(ud, walking, cycle, amp){
 }
 
 function renderThree(dt){
+  wheelSpins.forEach(w=> w.rotation.y += dt*0.4);
   const pWalking = player.speedMag>4;
   const pBob = pWalking ? Math.abs(Math.sin(player.walkCycle))*0.09 : 0;
   playerMesh.position.set(toWorldX(player.x), pBob, toWorldZ(player.y));
