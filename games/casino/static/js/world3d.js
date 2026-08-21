@@ -267,34 +267,58 @@ function makeFaceTexture(){
 function makeCharacter(colorHex){
   const group = new THREE.Group();
   const col = new THREE.Color(colorHex);
+  // bodyMat = peau (tete/cou/mains), suit la couleur du skin equipe.
   const bodyMat = new THREE.MeshStandardMaterial({color:col, roughness:0.6, emissive:col.clone().multiplyScalar(0.15)});
+  // Tenue de smoking fixe, independante du skin equipe.
+  const clothMat = new THREE.MeshStandardMaterial({color:0x1c1226, roughness:0.55, metalness:0.1});
+  const shoeMat = new THREE.MeshStandardMaterial({color:0x0d0a12, roughness:0.4, metalness:0.3});
+  const trimMatC = new THREE.MeshStandardMaterial({color:0xd4af37, roughness:0.35, metalness:0.6});
+  const bowMat = new THREE.MeshStandardMaterial({color:0x8a1030, roughness:0.4});
 
-  // Bassin : relie les jambes au torse au lieu de les laisser flotter sous un cylindre unique.
-  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.22,0.22,12), bodyMat);
+  // Bassin (pantalon) : relie les jambes au torse au lieu de les laisser flotter.
+  const hips = new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.22,0.22,12), clothMat);
   hips.position.y = 0.55;
   hips.castShadow = true;
 
-  // Torse plus large aux epaules qu'a la taille, pour une silhouette humaine.
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.25,0.5,12), bodyMat);
+  // Torse (veste) plus large aux epaules qu'a la taille, pour une silhouette humaine.
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.25,0.5,12), clothMat);
   torso.position.y = 0.9;
   torso.castShadow = true;
+
+  // Revers dores de la veste, de part et d'autre du noeud papillon.
+  const lapelL = new THREE.Mesh(new THREE.BoxGeometry(0.025,0.4,0.02), trimMatC);
+  lapelL.position.set(-0.09,0.95,0.31);
+  const lapelR = new THREE.Mesh(new THREE.BoxGeometry(0.025,0.4,0.02), trimMatC);
+  lapelR.position.set(0.09,0.95,0.31);
 
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,0.14,10), bodyMat);
   neck.position.y = 1.22;
 
+  // Noeud papillon a la base du cou.
+  const bowtie = new THREE.Group();
+  const bowL = new THREE.Mesh(new THREE.ConeGeometry(0.055,0.08,4), bowMat);
+  bowL.rotation.z = Math.PI/2; bowL.position.x = -0.045;
+  const bowR = new THREE.Mesh(new THREE.ConeGeometry(0.055,0.08,4), bowMat);
+  bowR.rotation.z = -Math.PI/2; bowR.position.x = 0.045;
+  const bowKnot = new THREE.Mesh(new THREE.SphereGeometry(0.025,6,6), bowMat);
+  bowtie.add(bowL, bowR, bowKnot);
+  bowtie.position.set(0,1.15,0.13);
+
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.24,14,12), bodyMat);
   head.position.y = 1.53;
   head.castShadow = true;
+  // Le plan du visage doit depasser le rayon de la tete (0.24), sinon la
+  // sphere passe devant lui au depth-test et le visage disparait.
   const face = new THREE.Mesh(
     new THREE.PlaneGeometry(0.28,0.28),
     new THREE.MeshBasicMaterial({map:makeFaceTexture(), transparent:true, depthWrite:false, side:THREE.DoubleSide})
   );
-  face.position.set(0,1.54,0.22);
+  face.position.set(0,1.54,0.25);
 
-  function makeLimb(x, pivotY, length, radiusTop, radiusBottom, tipMesh){
+  function makeLimb(x, pivotY, length, radiusTop, radiusBottom, tipMesh, limbMat){
     const pivot = new THREE.Group();
     pivot.position.set(x, pivotY, 0);
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, 8), bodyMat);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, 8), limbMat);
     mesh.castShadow = true;
     mesh.position.y = -length/2;
     pivot.add(mesh);
@@ -305,16 +329,17 @@ function makeCharacter(colorHex){
   }
   const handL = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,8), bodyMat);
   const handR = new THREE.Mesh(new THREE.SphereGeometry(0.075,8,8), bodyMat);
-  const footL = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), bodyMat);
-  const footR = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), bodyMat);
-  const armL = makeLimb(-0.38, 1.08, 0.46, 0.07, 0.06, handL);
-  const armR = makeLimb(0.38, 1.08, 0.46, 0.07, 0.06, handR);
-  const legL = makeLimb(-0.14, 0.5, 0.5, 0.1, 0.08, footL);
-  const legR = makeLimb(0.14, 0.5, 0.5, 0.1, 0.08, footR);
+  const footL = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), shoeMat);
+  const footR = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.08,0.24), shoeMat);
+  const armL = makeLimb(-0.38, 1.08, 0.46, 0.07, 0.06, handL, clothMat);
+  const armR = makeLimb(0.38, 1.08, 0.46, 0.07, 0.06, handR, clothMat);
+  const legL = makeLimb(-0.14, 0.5, 0.5, 0.1, 0.08, footL, clothMat);
+  const legR = makeLimb(0.14, 0.5, 0.5, 0.1, 0.08, footR, clothMat);
   footL.position.z = 0.05; footR.position.z = 0.05;
   footL.position.y += 0.04; footR.position.y += 0.04;
 
-  group.add(hips); group.add(torso); group.add(neck); group.add(head); group.add(face);
+  group.add(hips); group.add(torso); group.add(lapelL); group.add(lapelR);
+  group.add(neck); group.add(bowtie); group.add(head); group.add(face);
   group.add(armL); group.add(armR); group.add(legL); group.add(legR);
   group.userData.bodyMat = bodyMat;
   group.userData.armL = armL; group.userData.armR = armR;
