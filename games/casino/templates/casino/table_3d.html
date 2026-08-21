@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Casino — {{ game_label }} {{ code }}</title>
+<title>Casino — Salon {{ code }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -17,8 +17,8 @@
   <div id="floorContainer"></div>
 
   <header class="hud-title">
-    <h1>{{ game_label }}</h1>
-    <p>Approchez la table, appuyez sur E</p>
+    <h1>Le Casino</h1>
+    <p>Approchez une table, appuyez sur E — changez de jeu comme bon vous semble</p>
   </header>
 
   <div class="hud-controls-topleft">
@@ -42,171 +42,179 @@
   <div class="modal-card">
     <button class="close-btn" id="closeModalBtn">✕</button>
 
-    {% if game_type == 'poker' %}
-    <div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
-        <div class="table-header">
-            <h1>♠️ Poker</h1>
-            <span class="code-tag">Salon {{ code }}</span>
-        </div>
-        <div class="seats-row" id="seatsRow"></div>
-        <div class="felt">
-            <p class="pot-display" id="potDisplay">Pot : 0 🪙</p>
-            <div class="community-cards" id="communityCards"></div>
-            <p class="turn-banner" id="turnBanner"></p>
-            <p class="bj-hand-label" style="text-align:center;color:var(--text-dim);font-size:12px;margin:0 0 6px;">Vos cartes</p>
-            <div class="hand-cards" id="myCards"></div>
-        </div>
-        <div class="action-row" id="actionRow" hidden>
-            <button class="btn-outline" id="foldBtn">Se coucher</button>
-            <button class="btn-primary" id="callBtn">Suivre</button>
-            <input type="number" id="raiseAmount" min="0" step="10">
-            <button class="btn-outline" id="raiseBtn">Miser</button>
-            <button class="btn-outline" id="allinBtn">Tapis</button>
-        </div>
-        <div id="resultPanel" class="result-panel" hidden></div>
-        <div style="text-align:center;margin-top:16px;">
-            <button class="btn-primary" id="nextHandBtn" hidden>Main suivante</button>
-            <button class="btn-outline" id="rebuyBtn" hidden>Racheter des jetons</button>
-            <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
-        </div>
-        <p class="msg" id="pokerMsg"></p>
+    <div class="game-panel-mount" id="panel-poker" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>♠️ Poker</h1>
+              <span class="code-tag">Salon {{ code }}</span>
+          </div>
+          <div class="seats-row" id="seatsRow"></div>
+          <div class="felt">
+              <p class="pot-display" id="potDisplay">Pot : 0 🪙</p>
+              <div class="community-cards" id="communityCards"></div>
+              <p class="turn-banner" id="turnBanner"></p>
+              <p class="bj-hand-label" style="text-align:center;color:var(--text-dim);font-size:12px;margin:0 0 6px;">Vos cartes</p>
+              <div class="hand-cards" id="myCards"></div>
+          </div>
+          <div class="action-row" id="actionRow" hidden>
+              <button class="btn-outline" id="foldBtn">Se coucher</button>
+              <button class="btn-primary" id="callBtn">Suivre</button>
+              <input type="number" id="raiseAmount" min="0" step="10">
+              <button class="btn-outline" id="raiseBtn">Miser</button>
+              <button class="btn-outline" id="allinBtn">Tapis</button>
+          </div>
+          <div id="resultPanel" class="result-panel" hidden></div>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-primary" id="nextHandBtn" hidden>Main suivante</button>
+              <button class="btn-outline" id="rebuyBtn" hidden>Racheter des jetons</button>
+              <button class="btn-ghost btn-small" id="standUpBtn">Se lever de la table</button>
+          </div>
+          <p class="msg" id="pokerMsg"></p>
+      </div>
     </div>
 
-    {% elif game_type == 'roulette' %}
-    <div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
-        <div class="table-header">
-            <h1>🎡 Roulette</h1>
-            <span class="code-tag">Salon {{ code }}</span>
-        </div>
-        <div class="seats-row" id="seatsRow"></div>
-        <p class="pot-display" id="resultDisplay">—</p>
-        <p class="turn-banner" id="statusBanner"></p>
-        <div class="felt">
-            <div class="bet-outside" id="outsideBets">
-                <button class="btn-outline" data-type="red">Rouge</button>
-                <button class="btn-outline" data-type="black">Noir</button>
-                <button class="btn-outline" data-type="even">Pair</button>
-                <button class="btn-outline" data-type="odd">Impair</button>
-                <button class="btn-outline" data-type="low">Manque 1-18</button>
-                <button class="btn-outline" data-type="high">Passe 19-36</button>
-            </div>
-            <div class="roulette-grid" id="numberGrid"></div>
-        </div>
-        <div class="bet-row" id="betRow">
-            <label for="betAmount">Mise</label>
-            <input type="number" id="betAmount" value="50" min="10" step="10">
-            <button class="btn-primary" id="placeBetBtn">Miser</button>
-        </div>
-        <ul class="bets-summary" id="betsSummary"></ul>
-        <div style="text-align:center;margin-top:16px;">
-            <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le lancer</button>
-            <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
-            <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
-        </div>
-        <p class="msg" id="gameMsg"></p>
+    <div class="game-panel-mount" id="panel-roulette" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>🎡 Roulette</h1>
+              <span class="code-tag">Salon {{ code }}</span>
+          </div>
+          <div class="seats-row" id="seatsRow"></div>
+          <p class="pot-display" id="resultDisplay">—</p>
+          <p class="turn-banner" id="statusBanner"></p>
+          <div class="felt">
+              <div class="bet-outside" id="outsideBets">
+                  <button class="btn-outline" data-type="red">Rouge</button>
+                  <button class="btn-outline" data-type="black">Noir</button>
+                  <button class="btn-outline" data-type="even">Pair</button>
+                  <button class="btn-outline" data-type="odd">Impair</button>
+                  <button class="btn-outline" data-type="low">Manque 1-18</button>
+                  <button class="btn-outline" data-type="high">Passe 19-36</button>
+              </div>
+              <div class="roulette-grid" id="numberGrid"></div>
+          </div>
+          <div class="bet-row" id="betRow">
+              <label for="betAmount">Mise</label>
+              <input type="number" id="betAmount" value="50" min="10" step="10">
+              <button class="btn-primary" id="placeBetBtn">Miser</button>
+          </div>
+          <ul class="bets-summary" id="betsSummary"></ul>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le lancer</button>
+              <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
+              <button class="btn-ghost btn-small" id="standUpBtn">Se lever de la table</button>
+          </div>
+          <p class="msg" id="gameMsg"></p>
+      </div>
     </div>
 
-    {% elif game_type == 'blackjack' %}
-    <div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
-        <div class="table-header">
-            <h1>🃏 Blackjack</h1>
-            <span class="code-tag">Salon {{ code }}</span>
-        </div>
-        <div class="felt">
-            <p class="bj-hand-label" style="text-align:center;color:var(--text-dim);font-size:12px;margin:0 0 6px;">Croupier</p>
-            <div class="dealer-cards" id="dealerCards"></div>
-            <p class="pot-display" id="dealerValue">Valeur : ?</p>
-        </div>
-        <div class="seats-row" id="seatsRow"></div>
-        <div class="bet-row" id="betRow">
-            <label for="betAmount">Mise</label>
-            <input type="number" id="betAmount" value="50" min="10" step="10">
-            <button class="btn-primary" id="placeBetBtn">Miser</button>
-        </div>
-        <p class="turn-banner" id="turnBanner"></p>
-        <div class="action-row" id="actionRow" hidden>
-            <button class="btn-outline" id="hitBtn">Tirer</button>
-            <button class="btn-primary" id="standBtn">Rester</button>
-        </div>
-        <div style="text-align:center;margin-top:16px;">
-            <button class="btn-outline" id="forceDealBtn" hidden>Forcer la distribution</button>
-            <button class="btn-primary" id="nextHandBtn" hidden>Main suivante</button>
-            <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
-        </div>
-        <p class="msg" id="gameMsg"></p>
+    <div class="game-panel-mount" id="panel-blackjack" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>🃏 Blackjack</h1>
+              <span class="code-tag">Salon {{ code }}</span>
+          </div>
+          <div class="felt">
+              <p class="bj-hand-label" style="text-align:center;color:var(--text-dim);font-size:12px;margin:0 0 6px;">Croupier</p>
+              <div class="dealer-cards" id="dealerCards"></div>
+              <p class="pot-display" id="dealerValue">Valeur : ?</p>
+          </div>
+          <div class="seats-row" id="seatsRow"></div>
+          <div class="bet-row" id="betRow">
+              <label for="betAmount">Mise</label>
+              <input type="number" id="betAmount" value="50" min="10" step="10">
+              <button class="btn-primary" id="placeBetBtn">Miser</button>
+          </div>
+          <p class="turn-banner" id="turnBanner"></p>
+          <div class="action-row" id="actionRow" hidden>
+              <button class="btn-outline" id="hitBtn">Tirer</button>
+              <button class="btn-primary" id="standBtn">Rester</button>
+          </div>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-outline" id="forceDealBtn" hidden>Forcer la distribution</button>
+              <button class="btn-primary" id="nextHandBtn" hidden>Main suivante</button>
+              <button class="btn-ghost btn-small" id="standUpBtn">Se lever de la table</button>
+          </div>
+          <p class="msg" id="gameMsg"></p>
+      </div>
     </div>
 
-    {% elif game_type == 'dice' %}
-    <div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
-        <div class="table-header">
-            <h1>🎲 Les Dés</h1>
-            <span class="code-tag">Salon {{ code }}</span>
-        </div>
-        <div class="seats-row" id="seatsRow"></div>
-        <p class="turn-banner" id="statusBanner"></p>
-        <div class="felt wine">
-            <div class="dice-faces">
-                <div class="die" id="dice1"></div>
-                <div class="die" id="dice2"></div>
-            </div>
-            <p class="pot-display" id="sumDisplay">Total : —</p>
-            <div class="bet-outside" id="betTypes">
-                <button class="btn-outline" data-type="petit">Petit (2-6)</button>
-                <button class="btn-outline" data-type="grand">Grand (8-12)</button>
-                <button class="btn-outline" data-type="sept">Sept pile (x5)</button>
-            </div>
-        </div>
-        <div class="bet-row" id="betRow">
-            <label for="betAmount">Mise</label>
-            <input type="number" id="betAmount" value="50" min="10" step="10">
-            <button class="btn-primary" id="placeBetBtn">Miser</button>
-        </div>
-        <ul class="bets-summary" id="betsSummary"></ul>
-        <div style="text-align:center;margin-top:16px;">
-            <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le lancer</button>
-            <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
-            <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
-        </div>
-        <p class="msg" id="gameMsg"></p>
+    <div class="game-panel-mount" id="panel-dice" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>🎲 Les Dés</h1>
+              <span class="code-tag">Salon {{ code }}</span>
+          </div>
+          <div class="seats-row" id="seatsRow"></div>
+          <p class="turn-banner" id="statusBanner"></p>
+          <div class="felt wine">
+              <div class="dice-faces">
+                  <div class="die" id="dice1"></div>
+                  <div class="die" id="dice2"></div>
+              </div>
+              <p class="pot-display" id="sumDisplay">Total : —</p>
+              <div class="bet-outside" id="betTypes">
+                  <button class="btn-outline" data-type="petit">Petit (2-6)</button>
+                  <button class="btn-outline" data-type="grand">Grand (8-12)</button>
+                  <button class="btn-outline" data-type="sept">Sept pile (x5)</button>
+              </div>
+          </div>
+          <div class="bet-row" id="betRow">
+              <label for="betAmount">Mise</label>
+              <input type="number" id="betAmount" value="50" min="10" step="10">
+              <button class="btn-primary" id="placeBetBtn">Miser</button>
+          </div>
+          <ul class="bets-summary" id="betsSummary"></ul>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le lancer</button>
+              <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
+              <button class="btn-ghost btn-small" id="standUpBtn">Se lever de la table</button>
+          </div>
+          <p class="msg" id="gameMsg"></p>
+      </div>
     </div>
 
-    {% elif game_type == 'slots' %}
-    <div class="table-screen" data-code="{{ code }}" data-user-id="{{ user['id'] }}">
-        <div class="table-header">
-            <h1>🎰 Machines à sous</h1>
-            <span class="code-tag">Salon {{ code }}</span>
-        </div>
-        <div class="seats-row" id="seatsRow"></div>
-        <p class="turn-banner" id="statusBanner"></p>
-        <div class="felt wine">
-            <p style="text-align:center;color:var(--text-dim);font-size:13px;margin:0 0 10px;">Toute la table tire le même levier — chacun mise et remporte selon sa propre mise.</p>
-            <div class="slot-result" id="slotResult">
-                <div class="sym">❔</div><div class="sym">❔</div><div class="sym">❔</div>
-            </div>
-        </div>
-        <div class="bet-row" id="betRow">
-            <label for="betAmount">Mise</label>
-            <input type="number" id="betAmount" value="50" min="10" step="10">
-            <button class="btn-primary" id="placeBetBtn">Miser</button>
-        </div>
-        <ul class="bets-summary" id="betsSummary"></ul>
-        <div style="text-align:center;margin-top:16px;">
-            <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le tirage</button>
-            <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
-            <button class="btn-ghost btn-small" id="leaveBtn">Quitter la table</button>
-        </div>
-        <p class="msg" id="gameMsg"></p>
+    <div class="game-panel-mount" id="panel-slots" hidden>
+      <div class="table-screen">
+          <div class="table-header">
+              <h1>🎰 Machines à sous</h1>
+              <span class="code-tag">Salon {{ code }}</span>
+          </div>
+          <div class="seats-row" id="seatsRow"></div>
+          <p class="turn-banner" id="statusBanner"></p>
+          <div class="felt wine">
+              <p style="text-align:center;color:var(--text-dim);font-size:13px;margin:0 0 10px;">Toute la table tire le même levier — chacun mise et remporte selon sa propre mise.</p>
+              <div class="slot-result" id="slotResult">
+                  <div class="sym">❔</div><div class="sym">❔</div><div class="sym">❔</div>
+              </div>
+          </div>
+          <div class="bet-row" id="betRow">
+              <label for="betAmount">Mise</label>
+              <input type="number" id="betAmount" value="50" min="10" step="10">
+              <button class="btn-primary" id="placeBetBtn">Miser</button>
+          </div>
+          <ul class="bets-summary" id="betsSummary"></ul>
+          <div style="text-align:center;margin-top:16px;">
+              <button class="btn-outline" id="forceResolveBtn" hidden>Forcer le tirage</button>
+              <button class="btn-primary" id="nextRoundBtn" hidden>Manche suivante</button>
+              <button class="btn-ghost btn-small" id="standUpBtn">Se lever de la table</button>
+          </div>
+          <p class="msg" id="gameMsg"></p>
+      </div>
     </div>
-    {% endif %}
+
   </div>
 </div>
 
 <script>
-window.CASINO_GAME_TYPE = {{ game_type|tojson }};
-window.CASINO_GAME_ICON = {{ game_icon|tojson }};
-window.CASINO_GAME_NAME = {{ game_label|tojson }};
+window.CASINO_SALON_CODE = {{ code|tojson }};
+window.CASINO_USER_ID = {{ user['id']|tojson }};
 </script>
 <script src="{{ url_for('casino.static', filename='js/world3d.js') }}"></script>
-<script src="{{ url_for('casino.static', filename='js/' + game_type + '.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/poker.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/roulette.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/blackjack.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/dice.js') }}"></script>
+<script src="{{ url_for('casino.static', filename='js/slots.js') }}"></script>
 </body>
 </html>

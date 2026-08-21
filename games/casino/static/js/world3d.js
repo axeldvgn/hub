@@ -1,13 +1,14 @@
-const GAME_TYPE = window.CASINO_GAME_TYPE;
-const GAME_ICON = window.CASINO_GAME_ICON;
-const GAME_NAME = window.CASINO_GAME_NAME;
-
-const FELT_BY_TYPE = {slots:'#5c1035', roulette:'#0b3d2e', blackjack:'#0b3d2e', dice:'#5c1035', poker:'#3b2412'};
+const SALON_CODE = window.CASINO_SALON_CODE;
+const MY_USER_ID = window.CASINO_USER_ID;
 
 const zones = [
-  {id:GAME_TYPE, name:GAME_NAME.toUpperCase(), x:340, y:230, w:220, h:150, felt:FELT_BY_TYPE[GAME_TYPE] || '#3b2412', icon:GAME_ICON},
+  {id:'slots',      name:'MACHINES A SOUS', x:40,  y:70,  w:220, h:150, felt:'#5c1035', icon:'🎰'},
+  {id:'roulette',   name:'ROULETTE',        x:640, y:70,  w:220, h:150, felt:'#0b3d2e', icon:'🎡'},
+  {id:'blackjack',  name:'BLACKJACK',       x:40,  y:390, w:220, h:150, felt:'#0b3d2e', icon:'🃏'},
+  {id:'dice',       name:'DES',             x:640, y:390, w:220, h:150, felt:'#5c1035', icon:'🎲'},
+  {id:'poker',      name:'POKER',           x:345, y:230, w:210, h:140, felt:'#3b2412', icon:'♠️'},
 ];
-const promptLabels = {[GAME_TYPE]: GAME_NAME};
+const promptLabels = {slots:'Machines à sous', roulette:'Roulette', blackjack:'Blackjack', dice:'Dés', poker:'Poker'};
 
 const player = {x:450, y:560, r:13, speed:170, vel:{x:0,y:0}, speedMag:0, walkCycle:0, facing:{x:0,y:1}};
 let nearbyZoneId = null;
@@ -497,20 +498,36 @@ rafId = requestAnimationFrame(loop);
 
 const modalOverlay = document.getElementById('modalOverlay');
 const closeModalBtn = document.getElementById('closeModalBtn');
+let currentGameHandle = null;
+let currentGameType = null;
+
 function handleInteract(){
   if(!nearbyZoneId) return;
-  openGame();
+  openGame(nearbyZoneId);
 }
-function openGame(){
+async function openGame(gameType){
+  if(currentGameType === gameType && !modalOverlay.classList.contains('hidden')) return;
   cancelAnimationFrame(rafId);
+  if(currentGameHandle){ currentGameHandle.stop(); currentGameHandle = null; }
+  try {
+    await fetch(`/casino/api/salon/${SALON_CODE}/${gameType}/sit`, {method:'POST'});
+  } catch(e){}
+  document.querySelectorAll('.game-panel-mount').forEach(el => el.hidden = true);
+  const root = document.getElementById('panel-' + gameType);
+  root.hidden = false;
   modalOverlay.classList.remove('hidden');
+  currentGameType = gameType;
+  currentGameHandle = window.CasinoGames[gameType](root, SALON_CODE, MY_USER_ID);
 }
 function closeModal(){
   if(modalOverlay.classList.contains('hidden')) return;
+  if(currentGameHandle){ currentGameHandle.stop(); currentGameHandle = null; }
+  currentGameType = null;
   modalOverlay.classList.add('hidden');
   lastTime = performance.now();
   rafId = requestAnimationFrame(loop);
 }
+window.__casinoCloseModal = closeModal;
 closeModalBtn.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', e=>{ if(e.target === modalOverlay) closeModal(); });
 

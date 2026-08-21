@@ -65,14 +65,34 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS tables (
+CREATE TABLE IF NOT EXISTS salons (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     code TEXT UNIQUE NOT NULL,
-    game_type TEXT NOT NULL,
     host_id INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'waiting',
     created_at TEXT NOT NULL,
     FOREIGN KEY (host_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS salon_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    salon_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    joined_at TEXT NOT NULL,
+    UNIQUE(salon_id, user_id),
+    FOREIGN KEY (salon_id) REFERENCES salons(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Une "table" est une instance de jeu (poker/roulette/blackjack/dés/machines à sous)
+-- à l'intérieur d'un salon : chaque salon en a exactement 5, une par jeu.
+CREATE TABLE IF NOT EXISTS tables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    salon_id INTEGER NOT NULL,
+    game_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'waiting',
+    created_at TEXT NOT NULL,
+    UNIQUE(salon_id, game_type),
+    FOREIGN KEY (salon_id) REFERENCES salons(id)
 );
 
 CREATE TABLE IF NOT EXISTS table_players (
@@ -211,13 +231,43 @@ def generate_code():
     db = get_db()
     while True:
         code = "".join(random.choices(string.ascii_uppercase + string.digits, k=5))
-        exists = db.execute("SELECT 1 FROM tables WHERE code = ?", (code,)).fetchone()
+        exists = db.execute("SELECT 1 FROM salons WHERE code = ?", (code,)).fetchone()
         if not exists:
             return code
 
 
-def get_table_by_code(code):
-    return get_db().execute("SELECT * FROM tables WHERE code = ?", (code.upper(),)).fetchone()
+def get_salon_by_code(code):
+    return get_db().execute("SELECT * FROM salons WHERE code = ?", (code.upper(),)).fetchone()
+
+
+def get_salon_member(salon_id, user_id):
+    return get_db().execute(
+        "SELECT * FROM salon_members WHERE salon_id = ? AND user_id = ?", (salon_id, user_id)
+    ).fetchone()
+
+
+def get_salon_members(salon_id):
+    return get_db().execute(
+        """SELECT sm.*, u.username FROM salon_members sm JOIN users u ON u.id = sm.user_id
+           WHERE sm.salon_id = ? ORDER BY sm.joined_at ASC""",
+        (salon_id,),
+    ).fetchall()
+
+
+def get_game_table(salon_id, game_type):
+    """La ligne 'tables' (instance de jeu) d'un salon pour un type de jeu donné.
+    Les 5 instances sont créées en même temps que le salon, donc toujours présentes."""
+    return get_db().execute(
+        "SELECT * FROM tables WHERE salon_id = ? AND game_type = ?", (salon_id, game_type)
+    ).fetchone()
+
+
+def _salon_and_table(code, game_type):
+    """Résout un code de salon + un type de jeu vers (salon, table). (None, None) si absent."""
+    salon = get_salon_by_code(code)
+    if not salon:
+        return None, None
+    return salon, get_game_table(salon["id"], game_type)
 
 
 def get_table_players(table_id):
@@ -473,31 +523,21 @@ def login_page():
     return render_template("casino/login.html")
 
 
-@casino_bp.route("/table/<code>/lobby")
-@login_required
-def lobby_page(code):
-    table = get_table_by_code(code)
-    if not table:
-        return redirect(url_for("casino.home"))
-    if table["status"] == "playing":
-        return redirect(url_for("casino.table_page", code=code))
-    return render_template("casino/lobby.html", code=table["code"], user=current_user(),
-                            game_type=table["game_type"], game_label=GAME_TYPES.get(table["game_type"], table["game_type"]))
+GAME_ICONS = {"poker": "♠️", "roulette": "🎡", "blackjack": "🃏", "dice": "🎲", "slots": "🎰"}
 
 
-@casino_bp.route("/table/<code>")
+@casino_bp.route("/salon/<code>")
 @login_required
-def table_page(code):
-    table = get_table_by_code(code)
-    if not table:
+def salon_page(code):
+    salon = get_salon_by_code(code)
+    if not salon:
         return redirect(url_for("casino.home"))
-    if table["status"] == "waiting":
-        return redirect(url_for("casino.lobby_page", code=code))
-    icons = {"poker": "♠️", "roulette": "🎡", "blackjack": "🃏", "dice": "🎲", "slots": "🎰"}
+    user = current_user()
+    if not get_salon_member(salon["id"], user["id"]):
+        return redirect(url_for("casino.home"))
     return render_template(
-        "casino/table_3d.html", code=table["code"], user=current_user(),
-        game_type=table["game_type"], game_icon=icons.get(table["game_type"], "🎲"),
-        game_label=GAME_TYPES.get(table["game_type"], table["game_type"]),
+        "casino/table_3d.html", code=salon["code"], user=user,
+        game_types=GAME_TYPES, game_icons=GAME_ICONS,
     )
 
 
@@ -574,106 +614,130 @@ def _launch_table(db, table):
     _run_bot_turns(db, table)
 
 
-@casino_bp.route("/api/table/create", methods=["POST"])
+def _leave_current_seat(db, salon_id, user):
+    """Quitte proprement le siège que user occupe (au plus un, parmi les 5 tables du
+    salon) : se couche/reste si une main est en cours pour ne pas bloquer les autres,
+    rembourse le tapis restant. Ne fait rien si user n'est assis nulle part."""
+    game_tables = db.execute("SELECT * FROM tables WHERE salon_id = ?", (salon_id,)).fetchall()
+    for table in game_tables:
+        tp = get_my_seat(table["id"], user["id"])
+        if not tp:
+            continue
+        if table["game_type"] == "poker":
+            hand_row = db.execute(
+                "SELECT * FROM poker_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1",
+                (table["id"],),
+            ).fetchone()
+            if hand_row and hand_row["phase"] != "done":
+                hp = db.execute(
+                    "SELECT * FROM poker_hand_players WHERE hand_id = ? AND user_id = ?",
+                    (hand_row["id"], user["id"]),
+                ).fetchone()
+                if hp and hp["status"] == "active":
+                    _apply_poker_action(db, table["id"], hand_row, tp, "fold", 0)
+        elif table["game_type"] == "blackjack":
+            hand_row = db.execute(
+                "SELECT * FROM blackjack_hands WHERE table_id = ? ORDER BY hand_number DESC LIMIT 1",
+                (table["id"],),
+            ).fetchone()
+            if hand_row and hand_row["phase"] == "playing" and hand_row["turn_seat"] == tp["seat"]:
+                _apply_blackjack_action(db, table["id"], hand_row, tp, user["id"], "stand")
+        tp = get_my_seat(table["id"], user["id"])  # re-lire (le tapis a pu changer via fold/stand)
+        if tp:
+            if tp["stack"] > 0:
+                db.execute("UPDATE users SET chips = chips + ? WHERE id = ?", (tp["stack"], user["id"]))
+            db.execute("DELETE FROM table_players WHERE id = ?", (tp["id"],))
+        return table["game_type"]
+    return None
+
+
+@casino_bp.route("/api/salon/create", methods=["POST"])
 @api_login_required
-def api_create_table():
-    data = request.get_json(force=True)
-    game_type = data.get("game_type")
-    if game_type not in GAME_TYPES:
-        return jsonify(error="Type de jeu invalide."), 400
+def api_create_salon():
     db = get_db()
     user = current_user()
-    if game_type == "poker" and user["chips"] < 20:
-        return jsonify(error="Il vous faut au moins 20 jetons pour ouvrir une table de poker."), 400
     code = generate_code()
     cur = db.execute(
-        "INSERT INTO tables (code, game_type, host_id, status, created_at) VALUES (?, ?, ?, 'waiting', ?)",
-        (code, game_type, user["id"], now()),
+        "INSERT INTO salons (code, host_id, created_at) VALUES (?, ?, ?)",
+        (code, user["id"], now()),
     )
-    table_id = cur.lastrowid
-    stack = 0
-    if game_type == "poker":
-        stack = min(POKER_BUYIN, user["chips"])
-        db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, user["id"]))
-    _seat_player(db, table_id, user["id"], stack)
-    table = db.execute("SELECT * FROM tables WHERE id = ?", (table_id,)).fetchone()
-    _fill_with_bots(db, table)
-    _launch_table(db, table)
+    salon_id = cur.lastrowid
+    db.execute(
+        "INSERT INTO salon_members (salon_id, user_id, joined_at) VALUES (?, ?, ?)",
+        (salon_id, user["id"], now()),
+    )
+    for game_type in GAME_TYPES:
+        db.execute(
+            "INSERT INTO tables (salon_id, game_type, status, created_at) VALUES (?, ?, 'waiting', ?)",
+            (salon_id, game_type, now()),
+        )
     db.commit()
     return jsonify(ok=True, code=code)
 
 
-@casino_bp.route("/api/table/join", methods=["POST"])
+@casino_bp.route("/api/salon/join", methods=["POST"])
 @api_login_required
-def api_join_table():
+def api_join_salon():
     data = request.get_json(force=True)
     code = (data.get("code") or "").strip().upper()
-    table = get_table_by_code(code)
-    if not table:
-        return jsonify(error="Table introuvable."), 404
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
-    already = db.execute(
-        "SELECT 1 FROM table_players WHERE table_id = ? AND user_id = ?", (table["id"], user["id"])
-    ).fetchone()
-    if already:
-        return jsonify(ok=True, code=table["code"])
-    count = db.execute(
-        "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
-    ).fetchone()["c"]
+    if get_salon_member(salon["id"], user["id"]):
+        return jsonify(ok=True, code=salon["code"])
+    count = len(get_salon_members(salon["id"]))
     if count >= MAX_PLAYERS:
-        if not _bot_replace_seat(db, table, user):
-            return jsonify(error="Cette table est complète. Réessayez entre deux manches "
-                                  "pour prendre la place d'un bot."), 400
-        db.commit()
-        return jsonify(ok=True, code=table["code"])
-    stack = 0
-    if table["game_type"] == "poker":
-        if user["chips"] < 20:
-            return jsonify(error="Il vous faut au moins 20 jetons pour vous asseoir."), 400
-        stack = min(POKER_BUYIN, user["chips"])
-        db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, user["id"]))
-    _seat_player(db, table["id"], user["id"], stack)
+        return jsonify(error="Ce salon est complet (5 joueurs max)."), 400
+    db.execute(
+        "INSERT INTO salon_members (salon_id, user_id, joined_at) VALUES (?, ?, ?)",
+        (salon["id"], user["id"], now()),
+    )
     db.commit()
-    return jsonify(ok=True, code=table["code"])
+    return jsonify(ok=True, code=salon["code"])
 
 
-@casino_bp.route("/api/table/<code>/leave", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/leave", methods=["POST"])
 @api_login_required
-def api_leave_table(code):
-    table = get_table_by_code(code)
-    if not table:
-        return jsonify(error="Table introuvable."), 404
+def api_leave_salon(code):
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
-    tp = get_my_seat(table["id"], user["id"])
-    if tp:
-        if tp["stack"] > 0:
-            db.execute("UPDATE users SET chips = chips + ? WHERE id = ?", (tp["stack"], user["id"]))
-        db.execute("DELETE FROM table_players WHERE id = ?", (tp["id"],))
-        remaining = db.execute(
-            "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
-        ).fetchone()["c"]
-        if remaining == 0:
-            db.execute("UPDATE tables SET status = 'finished' WHERE id = ?", (table["id"],))
-        elif table["host_id"] == user["id"]:
-            new_host = db.execute(
-                "SELECT user_id FROM table_players WHERE table_id = ? ORDER BY seat ASC LIMIT 1",
-                (table["id"],),
-            ).fetchone()
-            db.execute("UPDATE tables SET host_id = ? WHERE id = ?", (new_host["user_id"], table["id"]))
-        db.commit()
+    _leave_current_seat(db, salon["id"], user)
+    db.execute(
+        "DELETE FROM salon_members WHERE salon_id = ? AND user_id = ?", (salon["id"], user["id"])
+    )
+    db.commit()
     return jsonify(ok=True)
 
 
-@casino_bp.route("/api/table/<code>/rebuy", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/<game_type>/stand", methods=["POST"])
 @api_login_required
-def api_rebuy(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "poker":
-        return jsonify(error="Rachat impossible ici."), 400
+def api_stand(code, game_type):
+    if game_type not in GAME_TYPES:
+        return jsonify(error="Type de jeu invalide."), 404
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
+    _leave_current_seat(db, salon["id"], user)
+    db.commit()
+    return jsonify(ok=True)
+
+
+@casino_bp.route("/api/salon/<code>/poker/rebuy", methods=["POST"])
+@api_login_required
+def api_rebuy(code):
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
+    db = get_db()
+    user = current_user()
+    table = get_game_table(salon["id"], "poker")
     tp = get_my_seat(table["id"], user["id"])
     if not tp:
         return jsonify(error="Vous n'êtes pas à cette table."), 400
@@ -686,36 +750,96 @@ def api_rebuy(code):
     return jsonify(ok=True)
 
 
-@casino_bp.route("/api/table/<code>/start", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/<game_type>/sit", methods=["POST"])
 @api_login_required
-def api_start_table(code):
-    table = get_table_by_code(code)
-    if not table:
-        return jsonify(error="Table introuvable."), 404
-    user = current_user()
-    if table["host_id"] != user["id"]:
-        return jsonify(error="Seul l'hôte peut démarrer la table."), 403
+def api_sit(code, game_type):
+    if game_type not in GAME_TYPES:
+        return jsonify(error="Type de jeu invalide."), 400
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
-    players = get_table_players(table["id"])
-    if len(players) < 2:
-        return jsonify(error="Il faut au moins 2 joueurs pour démarrer."), 400
-    _launch_table(db, table)
+    user = current_user()
+    if not get_salon_member(salon["id"], user["id"]):
+        return jsonify(error="Vous ne faites pas partie de ce salon."), 403
+    table = get_game_table(salon["id"], game_type)
+
+    already_here = get_my_seat(table["id"], user["id"])
+    if not already_here:
+        left_type = _leave_current_seat(db, salon["id"], user)
+        if left_type == game_type:
+            already_here = get_my_seat(table["id"], user["id"])
+
+    if not already_here:
+        count = db.execute(
+            "SELECT COUNT(*) c FROM table_players WHERE table_id = ?", (table["id"],)
+        ).fetchone()["c"]
+        if count >= MAX_PLAYERS:
+            if not _bot_replace_seat(db, table, user):
+                db.commit()
+                return jsonify(error="Cette table est complète. Réessayez entre deux manches "
+                                      "pour prendre la place d'un bot."), 400
+        else:
+            stack = 0
+            if game_type == "poker":
+                if user["chips"] < 20:
+                    db.commit()
+                    return jsonify(error="Il vous faut au moins 20 jetons pour vous asseoir au poker."), 400
+                stack = min(POKER_BUYIN, user["chips"])
+                db.execute("UPDATE users SET chips = chips - ? WHERE id = ?", (stack, user["id"]))
+            _seat_player(db, table["id"], user["id"], stack)
+
+    table = db.execute("SELECT * FROM tables WHERE id = ?", (table["id"],)).fetchone()
+    if table["status"] != "playing":
+        _fill_with_bots(db, table)
+        _launch_table(db, table)
+    else:
+        _run_bot_turns(db, table)
     db.commit()
     return jsonify(ok=True)
 
 
-@casino_bp.route("/api/table/<code>/state")
+@casino_bp.route("/api/salon/<code>/state")
 @api_login_required
-def api_table_state(code):
-    table = get_table_by_code(code)
-    if not table:
-        return jsonify(error="Table introuvable."), 404
+def api_salon_state(code):
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
+    if not get_salon_member(salon["id"], user["id"]):
+        return jsonify(error="Vous ne faites pas partie de ce salon."), 403
+    members = get_salon_members(salon["id"])
+    my_seat_game = None
+    for table in db.execute("SELECT * FROM tables WHERE salon_id = ?", (salon["id"],)):
+        if get_my_seat(table["id"], user["id"]):
+            my_seat_game = table["game_type"]
+            break
+    return jsonify({
+        "code": salon["code"],
+        "host_id": salon["host_id"],
+        "is_host": salon["host_id"] == user["id"],
+        "my_chips": user["chips"],
+        "my_seat_game": my_seat_game,
+        "members": [{"user_id": m["user_id"], "username": m["username"]} for m in members],
+    })
+
+
+@casino_bp.route("/api/salon/<code>/<game_type>/state")
+@api_login_required
+def api_table_state(code, game_type):
+    if game_type not in GAME_TYPES:
+        return jsonify(error="Type de jeu invalide."), 404
+    salon = get_salon_by_code(code)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
+    db = get_db()
+    user = current_user()
+    table = get_game_table(salon["id"], game_type)
     players = get_table_players(table["id"])
     my_tp = next((p for p in players if p["user_id"] == user["id"]), None)
     if not my_tp:
-        return jsonify(error="Vous ne faites pas partie de cette table."), 403
+        return jsonify(error="Vous n'êtes pas assis à cette table."), 403
 
     if table["status"] == "playing":
         _run_bot_turns(db, table)
@@ -723,12 +847,12 @@ def api_table_state(code):
         players = get_table_players(table["id"])
 
     payload = {
-        "code": table["code"],
+        "code": salon["code"],
         "game_type": table["game_type"],
         "game_label": GAME_TYPES.get(table["game_type"], table["game_type"]),
         "status": table["status"],
-        "host_id": table["host_id"],
-        "is_host": table["host_id"] == user["id"],
+        "host_id": salon["host_id"],
+        "is_host": salon["host_id"] == user["id"],
         "my_seat": my_tp["seat"],
         "my_chips": user["chips"],
         "players": [
@@ -967,12 +1091,12 @@ def _advance_poker_street(db, hand_row, hand_players):
     )
 
 
-@casino_bp.route("/api/table/<code>/poker/action", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/poker/action", methods=["POST"])
 @api_login_required
 def api_poker_action(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "poker":
-        return jsonify(error="Table de poker introuvable."), 404
+    salon, table = _salon_and_table(code, "poker")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
     tp = get_my_seat(table["id"], user["id"])
@@ -1078,14 +1202,14 @@ def _apply_poker_action(db, table_id, hand_row, tp, action, amount):
     return None
 
 
-@casino_bp.route("/api/table/<code>/poker/next-hand", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/poker/next-hand", methods=["POST"])
 @api_login_required
 def api_poker_next_hand(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "poker":
-        return jsonify(error="Table de poker introuvable."), 404
+    salon, table = _salon_and_table(code, "poker")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     user = current_user()
-    if table["host_id"] != user["id"]:
+    if salon["host_id"] != user["id"]:
         return jsonify(error="Seul l'hôte peut lancer la main suivante."), 403
     db = get_db()
     hand_row = db.execute(
@@ -1235,12 +1359,14 @@ def _settle_bet(db, bet_row, win):
         db.execute("UPDATE users SET chips = chips + ? WHERE id = ?", (win, bet_row["user_id"]))
 
 
-@casino_bp.route("/api/table/<code>/round/bet", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/round/<game_type>/bet", methods=["POST"])
 @api_login_required
-def api_round_bet(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] not in ("roulette", "dice", "slots"):
-        return jsonify(error="Table introuvable."), 404
+def api_round_bet(code, game_type):
+    if game_type not in ("roulette", "dice", "slots"):
+        return jsonify(error="Type de jeu invalide."), 404
+    salon, table = _salon_and_table(code, game_type)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
     tp = get_my_seat(table["id"], user["id"])
@@ -1287,14 +1413,16 @@ def _apply_round_bet(db, table, user, bet_type, bet_value, amount):
     return None
 
 
-@casino_bp.route("/api/table/<code>/round/resolve", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/round/<game_type>/resolve", methods=["POST"])
 @api_login_required
-def api_round_resolve(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] not in ("roulette", "dice", "slots"):
-        return jsonify(error="Table introuvable."), 404
+def api_round_resolve(code, game_type):
+    if game_type not in ("roulette", "dice", "slots"):
+        return jsonify(error="Type de jeu invalide."), 404
+    salon, table = _salon_and_table(code, game_type)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     user = current_user()
-    if table["host_id"] != user["id"]:
+    if salon["host_id"] != user["id"]:
         return jsonify(error="Seul l'hôte peut forcer le lancer."), 403
     db = get_db()
     round_row = db.execute(
@@ -1308,14 +1436,16 @@ def api_round_resolve(code):
     return jsonify(ok=True)
 
 
-@casino_bp.route("/api/table/<code>/round/next", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/round/<game_type>/next", methods=["POST"])
 @api_login_required
-def api_round_next(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] not in ("roulette", "dice", "slots"):
-        return jsonify(error="Table introuvable."), 404
+def api_round_next(code, game_type):
+    if game_type not in ("roulette", "dice", "slots"):
+        return jsonify(error="Type de jeu invalide."), 404
+    salon, table = _salon_and_table(code, game_type)
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     user = current_user()
-    if table["host_id"] != user["id"]:
+    if salon["host_id"] != user["id"]:
         return jsonify(error="Seul l'hôte peut lancer la manche suivante."), 403
     db = get_db()
     round_row = db.execute(
@@ -1493,12 +1623,12 @@ def _bj_resolve(db, table_id, hand_id):
     )
 
 
-@casino_bp.route("/api/table/<code>/blackjack/bet", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/blackjack/bet", methods=["POST"])
 @api_login_required
 def api_blackjack_bet(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "blackjack":
-        return jsonify(error="Table introuvable."), 404
+    salon, table = _salon_and_table(code, "blackjack")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
     tp = get_my_seat(table["id"], user["id"])
@@ -1540,14 +1670,14 @@ def _apply_blackjack_bet(db, table, hand_row, user, amount):
     return None
 
 
-@casino_bp.route("/api/table/<code>/blackjack/force-deal", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/blackjack/force-deal", methods=["POST"])
 @api_login_required
 def api_blackjack_force_deal(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "blackjack":
-        return jsonify(error="Table introuvable."), 404
+    salon, table = _salon_and_table(code, "blackjack")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     user = current_user()
-    if table["host_id"] != user["id"]:
+    if salon["host_id"] != user["id"]:
         return jsonify(error="Seul l'hôte peut forcer la distribution."), 403
     db = get_db()
     hand_row = db.execute(
@@ -1561,12 +1691,12 @@ def api_blackjack_force_deal(code):
     return jsonify(ok=True)
 
 
-@casino_bp.route("/api/table/<code>/blackjack/action", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/blackjack/action", methods=["POST"])
 @api_login_required
 def api_blackjack_action(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "blackjack":
-        return jsonify(error="Table introuvable."), 404
+    salon, table = _salon_and_table(code, "blackjack")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     db = get_db()
     user = current_user()
     tp = get_my_seat(table["id"], user["id"])
@@ -1620,14 +1750,14 @@ def _apply_blackjack_action(db, table_id, hand_row, tp, user_id, action):
     return None
 
 
-@casino_bp.route("/api/table/<code>/blackjack/next", methods=["POST"])
+@casino_bp.route("/api/salon/<code>/blackjack/next", methods=["POST"])
 @api_login_required
 def api_blackjack_next(code):
-    table = get_table_by_code(code)
-    if not table or table["game_type"] != "blackjack":
-        return jsonify(error="Table introuvable."), 404
+    salon, table = _salon_and_table(code, "blackjack")
+    if not salon:
+        return jsonify(error="Salon introuvable."), 404
     user = current_user()
-    if table["host_id"] != user["id"]:
+    if salon["host_id"] != user["id"]:
         return jsonify(error="Seul l'hôte peut lancer la main suivante."), 403
     db = get_db()
     hand_row = db.execute(

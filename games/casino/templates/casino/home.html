@@ -3,28 +3,18 @@
 {% block content %}
 <div class="home-screen">
     <h1 class="home-title">Bienvenue {{ user['username'] }} 🎲</h1>
-    <p class="home-sub">Ouvrez une table (5 joueurs max) et invitez vos amis, ou rejoignez-en une avec un code.</p>
+    <p class="home-sub">Un salon = les 5 jeux réunis dans un même casino en 3D. Ouvrez-en un et invitez vos amis, ou rejoignez-en un avec un code.</p>
 
     <div class="home-cards">
         <div class="home-card">
-            <h2>Ouvrir une table</h2>
-            <p>Choisissez le jeu : vous entrez directement dans le casino en 3D, sièges vides comblés par des bots. Partagez le code pour que vos amis prennent leur place.</p>
-            <div class="game-type-grid" id="gameTypeGrid">
-                {% for gid, label in game_types.items() %}
-                <div class="game-type-option" data-type="{{ gid }}">
-                    <span class="icon">
-                        {%- if gid == 'poker' %}♠️{% elif gid == 'roulette' %}🎡{% elif gid == 'blackjack' %}🃏{% elif gid == 'dice' %}🎲{% else %}🎰{% endif -%}
-                    </span>
-                    {{ label }}
-                </div>
-                {% endfor %}
-            </div>
-            <button class="btn-primary" id="createBtn" disabled>Créer la table</button>
+            <h2>Ouvrir un salon</h2>
+            <p>Vous entrez directement dans le casino en 3D. Marchez jusqu'à une table (poker, roulette, blackjack, dés, machines à sous) et asseyez-vous — les sièges vides sont comblés par des bots. Changez de table quand vous voulez.</p>
+            <button class="btn-primary" id="createBtn">Créer un salon</button>
             <p class="form-error" id="createError"></p>
         </div>
 
         <div class="home-card">
-            <h2>Rejoindre une table</h2>
+            <h2>Rejoindre un salon</h2>
             <p>Entrez le code à 5 caractères donné par votre ami.</p>
             <form id="joinForm" class="join-form">
                 <input type="text" id="joinCode" maxlength="5" placeholder="EX: A1B2C" autocomplete="off">
