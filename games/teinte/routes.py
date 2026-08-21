@@ -3,6 +3,7 @@ import random
 import string
 import math
 import os
+import secrets
 from datetime import datetime
 from flask import Blueprint, g, session, request, jsonify, render_template, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -50,7 +51,8 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    is_guest INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS characters (
@@ -109,42 +111,48 @@ CREATE TABLE IF NOT EXISTS guesses (
 """
 
 CHARACTERS = [
-    ("Scooby-Doo", "Scooby-Doo", "son pelage", "#8B5A2B"),
-    ("Naruto", "Naruto Uzumaki", "sa tenue", "#FF7800"),
-    ("Naruto", "Sasuke Uchiwa", "sa tenue", "#26415E"),
-    ("One Piece", "Monkey D. Luffy", "son gilet", "#B2211A"),
-    ("Pokémon", "Pikachu", "son pelage", "#FFD700"),
-    ("Dragon Ball", "Son Goku", "son gi", "#FF6A00"),
-    ("Dragon Ball", "Piccolo", "sa peau", "#2E8B57"),
-    ("Bob l'éponge", "Bob l'éponge", "sa peau", "#FFD93D"),
-    ("Bob l'éponge", "Patrick", "sa peau", "#FF8FB1"),
-    ("Les Simpson", "Homer Simpson", "sa peau", "#FCD34D"),
-    ("Les Simpson", "Marge Simpson", "ses cheveux", "#4A90D9"),
-    ("Shrek", "Shrek", "sa peau", "#7CB342"),
-    ("Sonic", "Sonic", "son pelage", "#1E90FF"),
-    ("Super Mario", "Mario", "sa casquette", "#E4000F"),
-    ("Super Mario", "Luigi", "sa casquette", "#00A651"),
-    ("My Hero Academia", "Izuku Midoriya", "sa tenue de héros", "#1B7A3D"),
-    ("Demon Slayer", "Nezuko Kamado", "son kimono", "#FF6FA5"),
-    ("Minions", "Un Minion", "sa salopette", "#1560BD"),
-    ("Winnie l'ourson", "Winnie l'ourson", "son pull", "#C1272D"),
-    ("Peppa Pig", "Peppa Pig", "sa robe", "#E4536B"),
-    ("Les Schtroumpfs", "Un Schtroumpf", "sa peau", "#4FC3F7"),
-    ("Batman", "Batman", "sa tenue", "#232B3A"),
-    ("Hulk", "Hulk", "sa peau", "#6FCF37"),
-    ("Kirby", "Kirby", "son corps", "#FFB6D9"),
-    ("Astérix", "Obélix", "ses bretelles", "#3E6DBF"),
-    ("Toy Story", "Buzz l'Éclair", "sa combinaison", "#3C6E47"),
-    ("Toy Story", "Woody", "son chapeau", "#B8621B"),
-    ("Angry Birds", "Red", "son plumage", "#D6291E"),
-    ("Adventure Time", "Finn", "son bonnet", "#F2F2F2"),
-    ("Adventure Time", "Jake", "son pelage", "#F5C05A"),
+    # Personnages du domaine public / du folklore — aucun droit d'auteur
+    # ne s'applique à ces figures littéraires, mythologiques ou de contes.
+    ("Littérature classique", "Sherlock Holmes", "son manteau", "#8C8172"),
+    ("Littérature classique", "Dracula", "sa cape", "#171216"),
+    ("Littérature classique", "Frankenstein", "sa peau", "#6B8E4E"),
+    ("Alice au pays des merveilles", "Alice", "sa robe", "#3B6FB6"),
+    ("Alice au pays des merveilles", "Le Chapelier Fou", "son chapeau", "#6A3FA0"),
+    ("Alice au pays des merveilles", "Le Lapin Blanc", "son gilet", "#C0392B"),
+    ("Alice au pays des merveilles", "Le Chat du Cheshire", "son pelage", "#B983D6"),
+    ("Alice au pays des merveilles", "La Reine de Cœur", "sa robe", "#C0142B"),
+    ("Folklore anglais", "Robin des Bois", "sa tenue", "#2F6B3C"),
+    ("Légende arthurienne", "Merlin l'Enchanteur", "sa robe", "#3B3A78"),
+    ("Contes de Perrault", "Le Petit Chaperon Rouge", "sa cape", "#C21E27"),
+    ("Contes de Perrault", "Le Grand Méchant Loup", "son pelage", "#6E6E6E"),
+    ("Contes de Perrault", "Le Chat Botté", "son pelage", "#D97B29"),
+    ("Contes de Perrault", "Cendrillon", "sa robe", "#7FB2DE"),
+    ("Contes de Perrault", "Barbe Bleue", "sa barbe", "#1B4F8C"),
+    ("Contes de Perrault", "Peau d'Âne", "sa robe", "#C7C7D6"),
+    ("Contes de Perrault", "La Belle au Bois Dormant", "sa robe", "#E08FB0"),
+    ("Les Misérables", "Jean Valjean", "sa veste", "#5B4630"),
+    ("Les Misérables", "Cosette", "sa robe", "#A9C4DE"),
+    ("Les Misérables", "Javert", "son uniforme", "#1F2A44"),
+    ("Notre-Dame de Paris", "Quasimodo", "sa tenue", "#6B4A2F"),
+    ("Les Trois Mousquetaires", "D'Artagnan", "son manteau", "#2A4B8D"),
+    ("Cyrano de Bergerac", "Cyrano de Bergerac", "son chapeau", "#7A1F2B"),
+    ("Arsène Lupin", "Arsène Lupin", "son chapeau", "#2B2B2E"),
+    ("Peter Pan", "Le Capitaine Crochet", "son manteau", "#7A1E1E"),
+    ("Peter Pan", "Peter Pan", "sa tenue", "#3C8C4B"),
+    ("Mythologie grecque", "Zeus", "sa toge", "#C9A227"),
+    ("Mythologie nordique", "Thor", "sa cape", "#B71C2B"),
+    ("Folklore de Noël", "Le Père Noël", "son manteau", "#D7263D"),
+    ("Folklore slave", "Baba Yaga", "sa robe", "#4A5D3A"),
 ]
 
 
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
+    # Migration douce pour une base créée avant l'ajout du mode invité.
+    cols = [row[1] for row in db.execute("PRAGMA table_info(users)")]
+    if "is_guest" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0")
     count = db.execute("SELECT COUNT(*) FROM characters").fetchone()[0]
     if count == 0:
         db.executemany(
@@ -308,6 +316,31 @@ def api_register():
     return jsonify(ok=True)
 
 
+@teinte_bp.route("/api/guest", methods=["POST"])
+def api_guest_login():
+    data = request.get_json(force=True)
+    pseudo = (data.get("username") or "").strip()
+    if len(pseudo) < 2 or len(pseudo) > 20:
+        return jsonify(error="Pseudo entre 2 et 20 caractères."), 400
+
+    db = get_db()
+    username = pseudo
+    exists = db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
+    if exists:
+        # Pseudo déjà pris (par un compte ou un autre invité) : on ajoute
+        # un petit suffixe pour rester unique sans bloquer la personne.
+        username = f"{pseudo}-{random.randint(1000, 9999)}"
+
+    db.execute(
+        "INSERT INTO users (username, password_hash, created_at, is_guest) VALUES (?, ?, ?, 1)",
+        (username, generate_password_hash(secrets.token_hex(16)), now()),
+    )
+    db.commit()
+    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    session[SESSION_KEY] = user["id"]
+    return jsonify(ok=True, username=username)
+
+
 @teinte_bp.route("/api/login", methods=["POST"])
 def api_login():
     data = request.get_json(force=True)
@@ -376,6 +409,29 @@ def api_join_game():
     return jsonify(ok=True, code=game["code"])
 
 
+def get_shape_for_item(item):
+    """Associe l'objet à deviner à une silhouette générique (pas liée à un
+    personnage précis, pour rester dans les clous côté droits d'auteur)."""
+    text = item.lower()
+    if "barbe" in text:
+        return "beard"
+    if "casquette" in text or "chapeau" in text or "bonnet" in text:
+        return "hat"
+    if "peau" in text:
+        return "skin"
+    if "pelage" in text or "plumage" in text:
+        return "fur"
+    if "cheveux" in text:
+        return "hair"
+    if "robe" in text or "kimono" in text:
+        return "dress"
+    if "corps" in text:
+        return "blob"
+    if "bretelles" in text:
+        return "straps"
+    return "outfit"  # tenue, gi, gilet, salopette, pull, combinaison, etc.
+
+
 @teinte_bp.route("/api/game/<code>/state")
 @login_required
 def api_game_state(code):
@@ -416,6 +472,7 @@ def api_game_state(code):
             "franchise": rnd["franchise"],
             "character_name": rnd["character_name"],
             "item": rnd["item"],
+            "shape": get_shape_for_item(rnd["item"]),
             "status": rnd["status"],
             "submitted_count": len(guesses),
             "player_count": len(players),

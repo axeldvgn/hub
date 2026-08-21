@@ -12,6 +12,7 @@
         <div class="auth-tabs">
             <button class="auth-tab active" data-tab="login">Connexion</button>
             <button class="auth-tab" data-tab="register">Créer un compte</button>
+            <button class="auth-tab" data-tab="guest">Invité</button>
         </div>
 
         <form id="loginForm" class="auth-form">
@@ -34,6 +35,15 @@
             </label>
             <p class="form-error" id="registerError"></p>
             <button type="submit" class="btn-primary">Créer mon compte</button>
+        </form>
+
+        <form id="guestForm" class="auth-form" hidden>
+            <label>Pseudo
+                <input type="text" name="username" minlength="2" maxlength="20" autocomplete="off" placeholder="Comment on t'appelle ?" required>
+            </label>
+            <p class="auth-hint">Pas de mot de passe : tu joues directement, mais la partie ne sera pas liée à un compte permanent.</p>
+            <p class="form-error" id="guestError"></p>
+            <button type="submit" class="btn-primary">Jouer en invité</button>
         </form>
     </div>
 </div>

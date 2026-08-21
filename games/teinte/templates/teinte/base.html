@@ -17,12 +17,12 @@
     </a>
     <div class="topbar-right">
         <a class="btn-ghost btn-small" href="/">← Hub</a>
-        <span class="topbar-user">{{ user['username'] }}</span>
+        <span class="topbar-user">{{ user['username'] }}{% if user['is_guest'] %} <span class="guest-badge">Invité</span>{% endif %}</span>
         <button class="btn-ghost btn-small" id="logoutBtn">Déconnexion</button>
     </div>
 </header>
 {% endif %}
-<main class="page">
+<main class="page {% block page_class %}{% endblock %}">
 {% block content %}{% endblock %}
 </main>
 {% if user %}

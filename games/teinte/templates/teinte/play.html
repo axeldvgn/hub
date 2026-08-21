@@ -1,5 +1,6 @@
 {% extends "teinte/base.html" %}
 {% block title %}Teinte — Manche{% endblock %}
+{% block page_class %}page-wide{% endblock %}
 {% block content %}
 <div class="play-screen" data-code="{{ code }}" data-total="{{ total_rounds }}">
     <div class="play-header">
@@ -7,23 +8,32 @@
         <div class="scoreboard-mini" id="scoreboardMini"></div>
     </div>
 
-    <div class="play-prompt">
-        <p class="play-eyebrow" id="franchiseLabel">…</p>
-        <h1 id="promptText">Chargement…</h1>
-        <p class="play-status" id="submitStatus"></p>
-    </div>
+    <div class="play-columns" id="pickerArea">
+        <div class="picker-panel">
+            <div class="wheel-wrap">
+                <canvas id="wheelCanvas" width="260" height="260"></canvas>
+                <div class="wheel-cursor" id="wheelCursor"></div>
+                <div class="wheel-preview" id="wheelPreview"></div>
+            </div>
 
-    <div class="picker-area" id="pickerArea">
-        <div class="wheel-wrap">
-            <canvas id="wheelCanvas" width="260" height="260"></canvas>
-            <div class="wheel-cursor" id="wheelCursor"></div>
-            <div class="wheel-preview" id="wheelPreview"></div>
-        </div>
-
-        <div class="picker-controls">
             <label class="slider-label">Luminosité
                 <input type="range" id="valueSlider" min="0" max="100" value="80">
             </label>
+
+            <div class="color-preview-box" id="colorPreviewBox"></div>
+
+            <div class="preset-swatches" id="presetSwatches">
+                <button type="button" class="preset-swatch" data-hex="#FFFFFF" style="background:#FFFFFF"></button>
+                <button type="button" class="preset-swatch" data-hex="#808080" style="background:#808080"></button>
+                <button type="button" class="preset-swatch" data-hex="#000000" style="background:#000000"></button>
+                <button type="button" class="preset-swatch" data-hex="#8B5A2B" style="background:#8B5A2B"></button>
+                <button type="button" class="preset-swatch" data-hex="#F2C79B" style="background:#F2C79B"></button>
+                <button type="button" class="preset-swatch" data-hex="#FF6FA5" style="background:#FF6FA5"></button>
+                <button type="button" class="preset-swatch" data-hex="#FF8C00" style="background:#FF8C00"></button>
+                <button type="button" class="preset-swatch" data-hex="#1E4E8C" style="background:#1E4E8C"></button>
+                <button type="button" class="preset-swatch" data-hex="#2E7D46" style="background:#2E7D46"></button>
+            </div>
+
             <div class="hex-row">
                 <label>Hex
                     <input type="text" id="hexInput" maxlength="7" value="#CCCCCC">
@@ -36,18 +46,23 @@
             </div>
             <button class="btn-primary btn-large" id="validateBtn">Valider ma couleur</button>
         </div>
+
+        <div class="character-panel">
+            <p class="play-eyebrow" id="franchiseLabel">…</p>
+            <h1 id="promptText">Chargement…</h1>
+            <div class="character-shape character-shape-big" id="characterShape"></div>
+            <p class="play-status" id="submitStatus"></p>
+        </div>
     </div>
 
     <div class="reveal-area" id="revealArea" hidden>
         <h2>Résultats de la manche</h2>
-        <div class="reveal-official">
-            <div class="swatch-large" id="officialSwatch"></div>
-            <div>
-                <p class="reveal-label">Vraie couleur</p>
-                <p class="reveal-hex" id="officialHex"></p>
-            </div>
+        <div class="official-card">
+            <div class="character-shape character-shape-official" id="officialShape"></div>
+            <p class="reveal-label">Vraie couleur</p>
+            <p class="reveal-hex" id="officialHex"></p>
         </div>
-        <ul class="guess-results" id="guessResults"></ul>
+        <div class="guess-card-grid" id="guessResults"></div>
         <div id="hostNextControls" hidden>
             <button class="btn-primary btn-large" id="nextBtn">Manche suivante</button>
         </div>
@@ -61,5 +76,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('teinte.static', filename='js/colorwheel.js') }}"></script>
+<script src="{{ url_for('teinte.static', filename='js/charactershapes.js') }}"></script>
 <script src="{{ url_for('teinte.static', filename='js/play.js') }}"></script>
 {% endblock %}

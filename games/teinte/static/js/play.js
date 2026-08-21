@@ -4,6 +4,10 @@ const code = screen.dataset.code;
 const wheelCanvas = document.getElementById("wheelCanvas");
 const wheelCursor = document.getElementById("wheelCursor");
 const wheelPreview = document.getElementById("wheelPreview");
+const characterShapeEl = document.getElementById("characterShape");
+const officialShapeEl = document.getElementById("officialShape");
+const colorPreviewBox = document.getElementById("colorPreviewBox");
+const presetSwatches = document.getElementById("presetSwatches");
 const valueSlider = document.getElementById("valueSlider");
 const hexInput = document.getElementById("hexInput");
 const rInput = document.getElementById("rInput");
@@ -18,7 +22,6 @@ const submitStatus = document.getElementById("submitStatus");
 const scoreboardMini = document.getElementById("scoreboardMini");
 const pickerArea = document.getElementById("pickerArea");
 const revealArea = document.getElementById("revealArea");
-const officialSwatch = document.getElementById("officialSwatch");
 const officialHex = document.getElementById("officialHex");
 const guessResults = document.getElementById("guessResults");
 const hostNextControls = document.getElementById("hostNextControls");
@@ -32,6 +35,8 @@ let lastRoundNumber = null;
 let lastRoundStatus = null;
 let hasSubmittedLocally = false;
 let syncingInputs = false;
+let updateShapeColor = null;
+let currentShapeKey = "outfit";
 
 function initWheel() {
     wheel = new ColorWheel(wheelCanvas, wheelCursor, wheelPreview, {
@@ -52,6 +57,8 @@ function syncFrom(color, source) {
     rInput.value = color.r;
     gInput.value = color.g;
     bInput.value = color.b;
+    colorPreviewBox.style.background = color.hex;
+    if (updateShapeColor) updateShapeColor(color.hex);
     syncingInputs = false;
 }
 
@@ -82,6 +89,16 @@ function rgbInputsChanged() {
     syncFrom({ r, g, b, hex }, "rgb");
 }
 [rInput, gInput, bInput].forEach(inp => inp.addEventListener("change", rgbInputsChanged));
+
+presetSwatches.querySelectorAll(".preset-swatch").forEach(btn => {
+    btn.addEventListener("click", () => {
+        const hex = btn.dataset.hex;
+        wheel.setHex(hex);
+        valueSlider.value = Math.round(wheel.v * 100);
+        const [r, g, b] = wheel.getRgb();
+        syncFrom({ r, g, b, hex: wheel.getHex() }, "preset");
+    });
+});
 
 function clamp255(v) {
     v = parseInt(v, 10);
@@ -131,18 +148,24 @@ function renderScoreboard(players) {
 }
 
 function renderReveal(round) {
-    officialSwatch.style.background = round.color_hex;
+    renderCharacterShape(officialShapeEl, round.shape, round.color_hex, round.character_name);
     officialHex.textContent = round.color_hex;
-    guessResults.innerHTML = round.guesses
-        .slice()
-        .sort((a, b) => b.score_pct - a.score_pct)
-        .map(g => `
-            <li>
-                <span class="swatch-small" style="background:${g.guessed_hex}"></span>
-                <span class="guess-name">${escapeHtml(g.username)}</span>
-                <span class="guess-score">${g.score_pct}%</span>
-            </li>
-        `).join("");
+
+    const sorted = round.guesses.slice().sort((a, b) => b.score_pct - a.score_pct);
+    guessResults.innerHTML = sorted
+        .map((g, i) => `
+            <div class="guess-card${i === 0 ? " is-winner" : ""}">
+                <div class="character-shape" data-hex="${g.guessed_hex}"></div>
+                <div class="guess-card-footer">
+                    <span class="guess-card-name">${escapeHtml(g.username)}</span>
+                    <span class="guess-card-score">${g.score_pct}%</span>
+                </div>
+            </div>
+        `)
+        .join("");
+    guessResults.querySelectorAll(".character-shape").forEach(el => {
+        renderCharacterShape(el, round.shape, el.dataset.hex, round.character_name);
+    });
 }
 
 function escapeHtml(str) {
@@ -171,8 +194,10 @@ async function poll() {
             lastRoundNumber = round.round_number;
             hasSubmittedLocally = false;
             validateBtn.disabled = false;
+            currentShapeKey = round.shape;
             wheel.setHSV(Math.random() * 360, 0.5, 0.8);
             valueSlider.value = 80;
+            updateShapeColor = renderCharacterShape(characterShapeEl, currentShapeKey, wheel.getHex(), round.character_name);
             const [r, g, b] = wheel.getRgb();
             syncFrom({ r, g, b, hex: wheel.getHex() }, "reset");
         }
