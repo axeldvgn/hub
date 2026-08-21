@@ -392,6 +392,7 @@ function makeSlotMachine(x,z,rotY){
   lever.position.y = -0.16;
   armPivot.add(lever);
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.055,8,8), new THREE.MeshStandardMaterial({color:0xe0335c, emissive:0xe0335c, emissiveIntensity:0.6}));
+  knob.position.y = -0.32;
   armPivot.add(knob);
   armPivot.rotation.z = 0.35;
   group.add(armPivot);
@@ -421,7 +422,8 @@ function makeClothingRack(x,z,rotY){
     hanger.position.set(gx,1.4,0);
     group.add(hanger);
     const garment = new THREE.Mesh(new THREE.ConeGeometry(0.14,0.42,8), new THREE.MeshStandardMaterial({color, roughness:0.6}));
-    garment.position.set(gx,1.14,0);
+    garment.position.set(gx,1.16,0);
+    garment.rotation.x = Math.PI; // pointe vers le bas, epaules larges en haut sous le cintre
     garment.castShadow = true;
     group.add(garment);
   });
@@ -480,10 +482,23 @@ function buildZoneDecor(z, wx, wz, ww, wh){
 
   } else if(z.id === 'blackjack'){
     const r = Math.min(ww,wh)*0.34;
-    const half = new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.85,24,1,false,0,Math.PI), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.6}));
-    half.position.set(wx,0.425,wz); half.rotation.y = Math.PI/2; half.castShadow = true; half.receiveShadow = true; scene.add(half);
+    const tableMat = new THREE.MeshStandardMaterial({color:z.felt, roughness:0.6});
+    const tableGroup = new THREE.Group();
+    const curved = new THREE.Mesh(new THREE.CylinderGeometry(r,r,0.85,24,1,false,0,Math.PI), tableMat);
+    curved.castShadow = true; curved.receiveShadow = true;
+    tableGroup.add(curved);
+    // CylinderGeometry avec un arc partiel ne ferme pas la face plane coupee :
+    // on la bouche avec une plaque pour eviter le trou beant dans la table.
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(r*2,0.85,0.06), tableMat);
+    cap.castShadow = true; cap.receiveShadow = true;
+    tableGroup.add(cap);
     const rim = new THREE.Mesh(new THREE.TorusGeometry(r,0.045,8,24,Math.PI), woodMat);
-    rim.rotation.x = Math.PI/2; rim.rotation.z = Math.PI/2; rim.position.set(wx,0.85,wz); scene.add(rim);
+    rim.rotation.x = Math.PI/2;
+    rim.position.y = 0.425;
+    tableGroup.add(rim);
+    tableGroup.position.set(wx,0.425,wz);
+    tableGroup.rotation.y = Math.PI/2;
+    scene.add(tableGroup);
     const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.2,0.22), woodMat);
     shoe.position.set(wx, 0.95, wz - r*0.6);
     shoe.rotation.x = -0.3;
@@ -493,23 +508,29 @@ function buildZoneDecor(z, wx, wz, ww, wh){
     makeChipStack(wx+r*0.5, 0.87, wz+r*0.5, [0x2ff1ff,0x8e6bff]);
 
   } else if(z.id === 'dice'){
-    const table = new THREE.Mesh(new THREE.BoxGeometry(ww*0.62,0.8,wh*0.5), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.7}));
-    table.position.set(wx,0.4,wz); table.castShadow = true; table.receiveShadow = true; scene.add(table);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(ww*0.66,0.14,wh*0.54), railMat);
-    rail.position.set(wx,0.83,wz); scene.add(rail);
-    const backboard = new THREE.Mesh(new THREE.BoxGeometry(ww*0.6,0.5,0.06), woodMat);
-    backboard.position.set(wx,0.9,wz - wh*0.22); scene.add(backboard);
-    makeDie(wx-0.3, 0.86, wz+0.15, 0.16);
-    makeDie(wx+0.15, 0.86, wz-0.05, 0.16);
-    makeChipStack(wx+ww*0.22, 0.85, wz+wh*0.15, [0xffd166,0xe0335c,0x2ff1ff]);
+    const tw = ww*0.62, td = wh*0.5, th = 0.8;
+    const topY = th; // surface superieure de la table (position.y=th/2 + demi-hauteur th/2)
+    const table = new THREE.Mesh(new THREE.BoxGeometry(tw,th,td), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.7}));
+    table.position.set(wx,th/2,wz); table.castShadow = true; table.receiveShadow = true; scene.add(table);
+    const railH = 0.14;
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(tw+0.08,railH,td+0.08), railMat);
+    rail.position.set(wx,topY+railH/2,wz); scene.add(rail);
+    const boardH = 0.5, boardHalf = 0.03;
+    const backboard = new THREE.Mesh(new THREE.BoxGeometry(tw*0.94,boardH,boardHalf*2), woodMat);
+    backboard.position.set(wx,topY+railH+boardH/2,wz - td/2 + boardHalf);
+    backboard.castShadow = true;
+    scene.add(backboard);
+    makeDie(wx-0.3, topY+railH+0.08, wz+0.15, 0.16);
+    makeDie(wx+0.15, topY+railH+0.08, wz-0.05, 0.16);
+    makeChipStack(wx+tw*0.32, topY+railH+0.02, wz+td*0.3, [0xffd166,0xe0335c,0x2ff1ff]);
 
   } else if(z.id === 'poker'){
     const rx = ww*0.34, rz = wh*0.26;
     const table = new THREE.Mesh(new THREE.CylinderGeometry(1,1,0.85,28), new THREE.MeshStandardMaterial({color:z.felt, roughness:0.55}));
     table.scale.set(rx,1,rz);
     table.position.set(wx,0.425,wz); table.castShadow = true; table.receiveShadow = true; scene.add(table);
-    const rail = new THREE.Mesh(new THREE.TorusGeometry(1,0.09,8,28), new THREE.MeshStandardMaterial({color:0x5c3a1e, roughness:0.6}));
-    rail.rotation.x = Math.PI/2; rail.scale.set(rx,rz,1); rail.position.set(wx,0.83,wz); scene.add(rail);
+    const rail = new THREE.Mesh(new THREE.TorusGeometry(1,0.07,8,28), new THREE.MeshStandardMaterial({color:0x5c3a1e, roughness:0.6}));
+    rail.rotation.x = Math.PI/2; rail.scale.set(rx,rz,1); rail.position.set(wx,0.85+0.06,wz); scene.add(rail);
     makeCardDeck(wx, 0.89, wz, 0.3);
     const button = new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.09,0.02,16), new THREE.MeshStandardMaterial({color:0xffffff}));
     button.position.set(wx+0.3, 0.87, wz+0.2); scene.add(button);
