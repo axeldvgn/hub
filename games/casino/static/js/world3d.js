@@ -125,8 +125,8 @@ function updateNPCs(dt){
 }
 
 const WORLD_SCALE = 30;
-function toWorldX(x){ return x/WORLD_SCALE - 15; }
-function toWorldZ(y){ return y/WORLD_SCALE - 10; }
+function toWorldX(x){ return x/WORLD_SCALE - ROOM_W/WORLD_SCALE/2; }
+function toWorldZ(y){ return y/WORLD_SCALE - ROOM_H/WORLD_SCALE/2; }
 
 function makeCarpetTexture(){
   const c = document.createElement('canvas'); c.width=128; c.height=128;
