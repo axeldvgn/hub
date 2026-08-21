@@ -440,18 +440,61 @@ def _run_one_poker_bot(db, table):
     return True
 
 
+def _preflop_strength(hole_cards):
+    """Force approximative d'une main de départ (0..1), sans les cartes communes."""
+    v1, v2 = poker.rank_value(hole_cards[0]["rank"]), poker.rank_value(hole_cards[1]["rank"])
+    hi, lo = max(v1, v2), min(v1, v2)
+    pair = v1 == v2
+    suited = hole_cards[0]["suit"] == hole_cards[1]["suit"]
+    gap = hi - lo
+    score = (hi + lo) / 28.0
+    if pair:
+        score += 0.25 + (hi - 2) / 40.0
+    if suited:
+        score += 0.08
+    if not pair and gap == 1:
+        score += 0.05
+    elif not pair and gap == 2:
+        score += 0.02
+    return max(0.0, min(1.0, score))
+
+
+def _hand_strength(hole_cards, community_cards):
+    """Force de la main (0..1) : heuristique avant le flop, évaluation réelle ensuite."""
+    if not community_cards:
+        return _preflop_strength(hole_cards)
+    category, _ = poker.evaluate_best_of_7(hole_cards + community_cards)
+    return max(0.0, min(1.0, (category + 1) / 9.0 + random.uniform(-0.03, 0.03)))
+
+
 def _bot_poker_decision(hand_row, me, stack):
+    """Décision d'un bot basée sur la force réelle de sa main plutôt que le hasard pur :
+    il suit les cotes du pot, relance avec les mains fortes, se couche sur les mains
+    faibles face à une grosse mise, et bluffe occasionnellement pour rester imprévisible."""
     to_call = hand_row["current_bet"] - me["bet_street"]
+    hole = json.loads(me["hole_cards"])
+    community = json.loads(hand_row["community_cards"])
+    strength = _hand_strength(hole, community)
+    bluff = random.random() < 0.08
+
     if to_call <= 0:
-        if random.random() < 0.75 or stack <= BIG_BLIND:
-            return "check", 0
-        return "bet", min(BIG_BLIND * random.choice([2, 3]), stack)
+        if (strength > 0.55 or bluff) and stack > BIG_BLIND:
+            size = BIG_BLIND * (3 if strength > 0.75 else 2)
+            return "bet", min(size, stack)
+        return "check", 0
+
     if to_call >= stack:
-        return ("call", 0) if random.random() < 0.5 else ("fold", 0)
+        threshold = 0.35 if to_call <= stack * 0.3 else 0.6
+        return ("call", 0) if (strength > threshold or bluff) else ("fold", 0)
+
     pot_odds = to_call / max(1, hand_row["pot"] + to_call)
-    if pot_odds > 0.4 and random.random() < 0.45:
+    if strength < pot_odds - 0.15 and not bluff:
         return "fold", 0
-    if random.random() < 0.12:
+    if strength > 0.72 and random.random() < 0.55:
+        raise_mult = 2 if strength > 0.85 else 1
+        raise_amt = min(to_call + max(hand_row["min_raise"], BIG_BLIND) * raise_mult, stack)
+        return "raise", raise_amt
+    if bluff and random.random() < 0.3:
         raise_amt = min(to_call + max(hand_row["min_raise"], BIG_BLIND), stack)
         return "raise", raise_amt
     return "call", 0
@@ -1231,6 +1274,16 @@ def _poker_state(db, table_id, user_id):
         to_call = min(hand_row["current_bet"] - me["bet_street"], _stack_for(db, table_id, user_id))
         min_raise_total = hand_row["min_raise"]
 
+    my_hand_label = None
+    if me and me["status"] != "folded":
+        my_hole = json.loads(me["hole_cards"])
+        community = json.loads(hand_row["community_cards"])
+        if community:
+            category, _ = poker.evaluate_best_of_7(my_hole + community)
+            my_hand_label = poker.hand_label((category, _))
+        elif my_hole[0]["rank"] == my_hole[1]["rank"]:
+            my_hand_label = f"Paire de {my_hole[0]['rank']}"
+
     return {
         "hand_number": hand_row["hand_number"],
         "phase": hand_row["phase"],
@@ -1243,6 +1296,7 @@ def _poker_state(db, table_id, user_id):
         "my_turn": hand_row["turn_seat"] == my_seat if me else False,
         "to_call": to_call,
         "min_raise_total": min_raise_total,
+        "my_hand_label": my_hand_label,
         "last_result": json.loads(hand_row["last_result"]) if hand_row["last_result"] else None,
         "players": [
             {

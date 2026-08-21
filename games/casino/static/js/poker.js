@@ -17,9 +17,13 @@ window.CasinoGames.poker = function (root, code, myUserId) {
     const nextHandBtn = $("nextHandBtn");
     const rebuyBtn = $("rebuyBtn");
     const standUpBtn = $("standUpBtn");
+    const handStrength = $("handStrength");
     const pokerMsg = $("pokerMsg");
 
     let lastState = null;
+    let shownCommunity = 0;
+    let shownMine = 0;
+    let celebratedHandKey = null;
 
     function escapeHtml(str) {
         const div = document.createElement("div");
@@ -27,11 +31,11 @@ window.CasinoGames.poker = function (root, code, myUserId) {
         return div.innerHTML;
     }
 
-    function cardHtml(card) {
+    function cardHtml(card, isNew) {
         if (!card) return '<div class="card card-back"></div>';
         const isRed = card.suit === '♥' || card.suit === '♦';
         const color = isRed ? '#c0264a' : '#1b1b1b';
-        return `<div class="card" style="color:${color}">
+        return `<div class="card${isNew ? ' deal-in' : ''}" style="color:${color}">
             <span class="corner tl">${card.rank}${card.suit}</span>
             <span class="pip">${card.suit}</span>
             <span class="corner br">${card.rank}${card.suit}</span>
@@ -87,10 +91,17 @@ window.CasinoGames.poker = function (root, code, myUserId) {
         }).join('');
 
         potDisplay.textContent = `Pot : ${(game.pot || 0).toLocaleString('fr-FR')} 🪙`;
-        communityCards.innerHTML = (game.community_cards || []).map(cardHtml).join('') || '<span style="color:var(--text-dim);font-size:13px;">—</span>';
+        const community = game.community_cards || [];
+        if (community.length < shownCommunity) shownCommunity = 0; // nouvelle main
+        communityCards.innerHTML = community.map((c, i) => cardHtml(c, i >= shownCommunity)).join('') || '<span style="color:var(--text-dim);font-size:13px;">—</span>';
+        shownCommunity = community.length;
 
         const me = gamePlayersByUser[myUserId];
-        myCards.innerHTML = me && me.hole_cards ? me.hole_cards.map(cardHtml).join('') : '<span style="color:var(--text-dim);font-size:13px;">—</span>';
+        const myHole = (me && me.hole_cards) || [];
+        if (myHole.length < shownMine) shownMine = 0;
+        myCards.innerHTML = myHole.length ? myHole.map((c, i) => cardHtml(c, i >= shownMine)).join('') : '<span style="color:var(--text-dim);font-size:13px;">—</span>';
+        shownMine = myHole.length;
+        handStrength.textContent = (game.phase !== 'done' && game.my_hand_label) ? `Votre main : ${game.my_hand_label}` : '';
 
         if (game.phase === 'idle') {
             turnBanner.textContent = '';
@@ -122,12 +133,19 @@ window.CasinoGames.poker = function (root, code, myUserId) {
             }).join('');
             const reveal = (r.reveal || []).map(rv => `
                 <div class="rh">
-                    <div class="cards">${rv.hole_cards.map(cardHtml).join('')}</div>
+                    <div class="cards">${rv.hole_cards.map(c => cardHtml(c, false)).join('')}</div>
                     ${escapeHtml(rv.username)}
                 </div>
             `).join('');
             resultPanel.innerHTML = `<h3>Résultat de la main</h3>${lines}
                 <div class="reveal-hands">${reveal}</div>`;
+
+            const handKey = game.hand_number + ':done';
+            if (handKey !== celebratedHandKey) {
+                celebratedHandKey = handKey;
+                const iWon = r.breakdown.some(b => b.winners.some(w => w.user_id === myUserId));
+                if (iWon) window.CasinoFX.confetti(resultPanel, 20);
+            }
         } else {
             resultPanel.hidden = true;
         }

@@ -31,6 +31,11 @@ window.CasinoGames.dice = function (root, code, myUserId) {
     renderDie(dice2El, 1);
 
     let selectedType = null;
+    let lastRoundKey = null;
+    let revealAt = 0;
+    let celebratedRoundKey = null;
+    let rollTimer = null;
+
     betTypes.querySelectorAll(".btn-outline").forEach(btn => {
         btn.addEventListener("click", () => {
             selectedType = btn.dataset.type;
@@ -38,6 +43,25 @@ window.CasinoGames.dice = function (root, code, myUserId) {
             btn.classList.add("selected");
         });
     });
+
+    function playRoll(d1, d2) {
+        dice1El.classList.add('rolling');
+        dice2El.classList.add('rolling');
+        let ticks = 0;
+        clearInterval(rollTimer);
+        rollTimer = setInterval(() => {
+            renderDie(dice1El, 1 + Math.floor(Math.random() * 6));
+            renderDie(dice2El, 1 + Math.floor(Math.random() * 6));
+            ticks++;
+            if (ticks > 8) {
+                clearInterval(rollTimer);
+                dice1El.classList.remove('rolling');
+                dice2El.classList.remove('rolling');
+                renderDie(dice1El, d1);
+                renderDie(dice2El, d2);
+            }
+        }, 110);
+    }
 
     function escapeHtml(str) {
         const div = document.createElement("div");
@@ -70,16 +94,25 @@ window.CasinoGames.dice = function (root, code, myUserId) {
             </div>
         `).join('');
 
+        const roundKey = game.round_number + ':' + game.phase;
+        const justResolved = game.phase === 'resolved' && roundKey !== lastRoundKey;
+        if (justResolved) {
+            revealAt = Date.now() + 1000;
+            playRoll(game.result.d1, game.result.d2);
+        }
+        lastRoundKey = roundKey;
+        const revealing = game.phase === 'resolved' && Date.now() < revealAt;
+
         if (game.phase === 'betting' || game.phase === 'idle') {
-            sumDisplay.textContent = 'Total : —';
-            renderDie(dice1El, 1);
-            renderDie(dice2El, 1);
+            if (!justResolved) { sumDisplay.textContent = 'Total : —'; renderDie(dice1El, 1); renderDie(dice2El, 1); }
             statusBanner.textContent = game.phase === 'betting'
                 ? `Manche ${game.round_number} — mises ouvertes (${game.bet_count}/${state.players.length})` : '';
+        } else if (revealing) {
+            sumDisplay.textContent = 'Total : —';
+            statusBanner.textContent = 'Les dés roulent…';
+            setTimeout(() => render(state), 150);
         } else {
             const r = game.result;
-            renderDie(dice1El, r.d1);
-            renderDie(dice2El, r.d2);
             sumDisplay.textContent = `Total : ${r.total}`;
             statusBanner.textContent = 'Résultat';
         }
@@ -88,13 +121,23 @@ window.CasinoGames.dice = function (root, code, myUserId) {
         betRow.hidden = game.phase !== 'betting' || alreadyBet;
         betTypes.querySelectorAll('.btn-outline').forEach(b => { b.disabled = game.phase !== 'betting' || alreadyBet; });
 
-        betsSummary.innerHTML = game.phase === 'resolved' ? (game.bets || []).map(b => `
-            <li><span>${escapeHtml(b.username)} — ${describeBet(b)} (${b.amount})</span>
-            <span class="${b.payout > 0 ? 'win' : 'lose'}">${b.payout > 0 ? '+' + b.payout : 'Perdu'}</span></li>
-        `).join('') : '';
+        if (game.phase === 'resolved' && !revealing) {
+            betsSummary.innerHTML = (game.bets || []).map(b => `
+                <li><span>${escapeHtml(b.username)} — ${describeBet(b)} (${b.amount})</span>
+                <span class="${b.payout > 0 ? 'win' : 'lose'}">${b.payout > 0 ? '+' + b.payout : 'Perdu'}</span></li>
+            `).join('');
+            if (roundKey !== celebratedRoundKey) {
+                celebratedRoundKey = roundKey;
+                if (game.my_bet && game.my_bet.payout > 0) {
+                    window.CasinoFX.confetti(root.querySelector('.dice-faces').parentElement, game.my_bet.payout >= game.my_bet.amount * 3 ? 20 : 12);
+                }
+            }
+        } else {
+            betsSummary.innerHTML = '';
+        }
 
         forceResolveBtn.hidden = !(state.is_host && game.phase === 'betting');
-        nextRoundBtn.hidden = !(state.is_host && (game.phase === 'resolved' || game.phase === 'idle'));
+        nextRoundBtn.hidden = !(state.is_host && (game.phase === 'resolved' && !revealing || game.phase === 'idle'));
     }
 
     async function poll() {
@@ -129,5 +172,5 @@ window.CasinoGames.dice = function (root, code, myUserId) {
 
     poll();
     const intervalId = setInterval(poll, 1500);
-    return { stop() { clearInterval(intervalId); } };
+    return { stop() { clearInterval(rollTimer); clearInterval(intervalId); } };
 };

@@ -17,17 +17,20 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
     const standUpBtn = $("standUpBtn");
     const gameMsg = $("gameMsg");
 
+    let shownDealer = 0;
+    let celebratedHandKey = null;
+
     function escapeHtml(str) {
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML;
     }
 
-    function cardHtml(card) {
+    function cardHtml(card, isNew) {
         if (!card) return '<div class="card card-back"></div>';
         const isRed = card.suit === '♥' || card.suit === '♦';
         const color = isRed ? '#c0264a' : '#1b1b1b';
-        return `<div class="card" style="color:${color}">
+        return `<div class="card${isNew ? ' deal-in' : ''}" style="color:${color}">
             <span class="corner tl">${card.rank}${card.suit}</span>
             <span class="pip">${card.suit}</span>
             <span class="corner br">${card.rank}${card.suit}</span>
@@ -53,14 +56,18 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
         if (game.phase === 'betting' || game.phase === 'idle') {
             dealerCards.innerHTML = '';
             dealerValue.textContent = 'Valeur : ?';
+            shownDealer = 0;
         } else {
             const cards = game.dealer_cards || [];
+            if (cards.length < shownDealer) shownDealer = 0;
             if (game.dealer_cards_hidden && cards.length >= 2) {
-                dealerCards.innerHTML = cardHtml(cards[0]) + cardHtml(null);
+                dealerCards.innerHTML = cardHtml(cards[0], shownDealer < 1) + cardHtml(null);
                 dealerValue.textContent = 'Valeur : ?';
+                shownDealer = 1;
             } else {
-                dealerCards.innerHTML = cards.map(cardHtml).join('');
+                dealerCards.innerHTML = cards.map((c, i) => cardHtml(c, i >= shownDealer)).join('');
                 dealerValue.textContent = game.dealer_value != null ? `Valeur : ${game.dealer_value}` : 'Valeur : ?';
+                shownDealer = cards.length;
             }
         }
 
@@ -76,12 +83,24 @@ window.CasinoGames.blackjack = function (root, code, myUserId) {
             return `<div class="${classes.join(' ')}">
                 <div class="seat-name">${escapeHtml(p.username)}${p.user_id === state.host_id ? ' 👑' : ''}</div>
                 ${gp && gp.bet > 0 ? `
-                    <div class="hand-cards" style="min-height:auto;transform:scale(0.7);margin:2px -10px;">${gp.cards.map(cardHtml).join('')}</div>
+                    <div class="hand-cards" style="min-height:auto;transform:scale(0.7);margin:2px -10px;">${gp.cards.map(c => cardHtml(c, false)).join('')}</div>
                     <div class="seat-stack">${gp.value} pts — ${STATUS_LABELS[gp.status] || gp.status}</div>
                     <div class="seat-bet">Mise: ${gp.bet}</div>
                 ` : '<div class="seat-bet">En attente…</div>'}
             </div>`;
         }).join('');
+
+        if (game.phase === 'done') {
+            const handKey = game.hand_number + ':done';
+            if (handKey !== celebratedHandKey) {
+                celebratedHandKey = handKey;
+                const me = gamePlayersByUser[myUserId];
+                const dealerVal = game.dealer_value;
+                const iWon = me && me.bet > 0 && me.status !== 'bust' &&
+                    (me.status === 'blackjack' || dealerVal == null || dealerVal > 21 || me.value > dealerVal);
+                if (iWon) window.CasinoFX.confetti(root.querySelector('.felt'), 18);
+            }
+        }
 
         const myPlaced = game.my_bet_placed;
         betRow.hidden = game.phase !== 'betting' || myPlaced;

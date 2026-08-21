@@ -4,7 +4,11 @@ window.CasinoGames.slots = function (root, code, myUserId) {
 
     const seatsRow = $("seatsRow");
     const statusBanner = $("statusBanner");
-    const slotResult = $("slotResult");
+    const slotCabinet = $("slotCabinet");
+    const bulbRow = $("bulbRow");
+    const strip1 = $("strip1");
+    const strip2 = $("strip2");
+    const strip3 = $("strip3");
     const betRow = $("betRow");
     const betAmount = $("betAmount");
     const placeBetBtn = $("placeBetBtn");
@@ -13,6 +17,58 @@ window.CasinoGames.slots = function (root, code, myUserId) {
     const nextRoundBtn = $("nextRoundBtn");
     const standUpBtn = $("standUpBtn");
     const gameMsg = $("gameMsg");
+
+    const SLOT_SYMS = ['🍒', '🍋', '🔔', '⭐', '💎', '7️⃣'];
+    let lastRoundKey = null;
+    let revealAt = 0;
+    let celebratedRoundKey = null;
+    let spinning = false;
+
+    for (let i = 0; i < 10; i++) {
+        const b = document.createElement('span');
+        b.className = 'bulb';
+        b.style.animationDelay = (i * 0.12) + 's';
+        bulbRow.appendChild(b);
+    }
+
+    function randomSymbol() { return SLOT_SYMS[Math.floor(Math.random() * SLOT_SYMS.length)]; }
+    function buildStrip(stripEl, finalSymbol) {
+        stripEl.style.transition = 'none';
+        stripEl.style.transform = 'translateY(0px)';
+        stripEl.innerHTML = '';
+        const N = 18;
+        for (let i = 0; i < N - 1; i++) {
+            const d = document.createElement('div');
+            d.className = 'sym';
+            d.textContent = randomSymbol();
+            stripEl.appendChild(d);
+        }
+        const last = document.createElement('div');
+        last.className = 'sym';
+        last.textContent = finalSymbol;
+        stripEl.appendChild(last);
+        void stripEl.offsetHeight;
+    }
+    function spinStrip(stripEl, finalSymbol, durationMs) {
+        return new Promise(resolve => {
+            buildStrip(stripEl, finalSymbol);
+            const totalHeight = 17 * 70;
+            requestAnimationFrame(() => {
+                stripEl.style.transition = `transform ${durationMs}ms cubic-bezier(0.17,0.67,0.24,1)`;
+                stripEl.style.transform = `translateY(-${totalHeight}px)`;
+            });
+            setTimeout(resolve, durationMs + 40);
+        });
+    }
+    async function playSpin(symbols) {
+        spinning = true;
+        await Promise.all([
+            spinStrip(strip1, symbols[0], 900),
+            spinStrip(strip2, symbols[1], 1150),
+            spinStrip(strip3, symbols[2], 1400),
+        ]);
+        spinning = false;
+    }
 
     function escapeHtml(str) {
         const div = document.createElement("div");
@@ -40,26 +96,47 @@ window.CasinoGames.slots = function (root, code, myUserId) {
             </div>
         `).join('');
 
+        const roundKey = game.round_number + ':' + game.phase;
+        const justResolved = game.phase === 'resolved' && roundKey !== lastRoundKey;
+        if (justResolved) {
+            revealAt = Date.now() + 1500;
+            playSpin(game.result.symbols);
+        }
+        lastRoundKey = roundKey;
+        const revealing = game.phase === 'resolved' && (spinning || Date.now() < revealAt);
+
         if (game.phase === 'betting' || game.phase === 'idle') {
-            slotResult.innerHTML = '<div class="sym">❔</div><div class="sym">❔</div><div class="sym">❔</div>';
             statusBanner.textContent = game.phase === 'betting'
                 ? `Manche ${game.round_number} — mises ouvertes (${game.bet_count}/${state.players.length})` : '';
+        } else if (revealing) {
+            statusBanner.textContent = 'Les rouleaux tournent…';
+            setTimeout(() => render(state), 200);
         } else {
-            const r = game.result;
-            slotResult.innerHTML = r.symbols.map(s => `<div class="sym">${s}</div>`).join('');
             statusBanner.textContent = 'Résultat';
         }
 
         const alreadyBet = !!game.my_bet;
         betRow.hidden = game.phase !== 'betting' || alreadyBet;
 
-        betsSummary.innerHTML = game.phase === 'resolved' ? (game.bets || []).map(b => `
-            <li><span>${escapeHtml(b.username)} — mise ${b.amount}</span>
-            <span class="${b.payout > 0 ? 'win' : 'lose'}">${b.payout > 0 ? '+' + b.payout : 'Perdu'}</span></li>
-        `).join('') : '';
+        if (game.phase === 'resolved' && !revealing) {
+            betsSummary.innerHTML = (game.bets || []).map(b => `
+                <li><span>${escapeHtml(b.username)} — mise ${b.amount}</span>
+                <span class="${b.payout > 0 ? 'win' : 'lose'}">${b.payout > 0 ? '+' + b.payout : 'Perdu'}</span></li>
+            `).join('');
+            if (roundKey !== celebratedRoundKey) {
+                celebratedRoundKey = roundKey;
+                if (game.my_bet && game.my_bet.payout > 0) {
+                    slotCabinet.classList.add('win-glow');
+                    setTimeout(() => slotCabinet.classList.remove('win-glow'), 1100);
+                    window.CasinoFX.confetti(slotCabinet, game.my_bet.payout >= game.my_bet.amount * 10 ? 22 : 12);
+                }
+            }
+        } else {
+            betsSummary.innerHTML = '';
+        }
 
         forceResolveBtn.hidden = !(state.is_host && game.phase === 'betting');
-        nextRoundBtn.hidden = !(state.is_host && (game.phase === 'resolved' || game.phase === 'idle'));
+        nextRoundBtn.hidden = !(state.is_host && (game.phase === 'resolved' && !revealing || game.phase === 'idle'));
     }
 
     async function poll() {

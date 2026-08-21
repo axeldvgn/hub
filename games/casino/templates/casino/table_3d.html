@@ -55,6 +55,7 @@
               <p class="turn-banner" id="turnBanner"></p>
               <p class="bj-hand-label" style="text-align:center;color:var(--text-dim);font-size:12px;margin:0 0 6px;">Vos cartes</p>
               <div class="hand-cards" id="myCards"></div>
+              <p class="hand-strength" id="handStrength"></p>
           </div>
           <div class="action-row" id="actionRow" hidden>
               <button class="btn-outline" id="foldBtn">Se coucher</button>
@@ -80,6 +81,9 @@
               <span class="code-tag">Salon {{ code }}</span>
           </div>
           <div class="seats-row" id="seatsRow"></div>
+          <div class="wheel-outer" id="wheelOuter">
+              <div class="wheel-pointer"></div>
+          </div>
           <p class="pot-display" id="resultDisplay">—</p>
           <p class="turn-banner" id="statusBanner"></p>
           <div class="felt">
@@ -184,8 +188,14 @@
           <p class="turn-banner" id="statusBanner"></p>
           <div class="felt wine">
               <p style="text-align:center;color:var(--text-dim);font-size:13px;margin:0 0 10px;">Toute la table tire le même levier — chacun mise et remporte selon sa propre mise.</p>
-              <div class="slot-result" id="slotResult">
-                  <div class="sym">❔</div><div class="sym">❔</div><div class="sym">❔</div>
+              <div class="slot-cabinet" id="slotCabinet">
+                  <div class="bulb-row" id="bulbRow"></div>
+                  <div class="reels-row">
+                      <div class="reel-window"><div class="reel-strip" id="strip1"></div></div>
+                      <div class="reel-window"><div class="reel-strip" id="strip2"></div></div>
+                      <div class="reel-window"><div class="reel-strip" id="strip3"></div></div>
+                  </div>
+                  <div class="payline"></div>
               </div>
           </div>
           <div class="bet-row" id="betRow">
@@ -210,6 +220,7 @@
 window.CASINO_SALON_CODE = {{ code|tojson }};
 window.CASINO_USER_ID = {{ user['id']|tojson }};
 </script>
+<script src="{{ url_for('casino.static', filename='js/effects.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/world3d.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/poker.js') }}"></script>
 <script src="{{ url_for('casino.static', filename='js/roulette.js') }}"></script>
