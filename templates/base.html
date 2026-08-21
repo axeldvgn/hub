@@ -11,12 +11,28 @@
 </head>
 <body>
 <header class="hub-topbar">
-    <a class="hub-brand" href="{{ url_for('home') }}">Le Labo</a>
-    <span class="hub-subbrand">par Axel Duvignon</span>
+    <div>
+        <a class="hub-brand" href="{{ url_for('home') }}">Le Labo</a>
+        <span class="hub-subbrand">par Axel Duvignon</span>
+    </div>
+    {% if hub_user %}
+    <div class="hub-topbar-right">
+        <span class="hub-topbar-user">{{ hub_user['username'] }}{% if hub_user['is_guest'] %} <span class="hub-guest-badge">Invité</span>{% endif %}</span>
+        <button class="btn-ghost btn-small" id="hubLogoutBtn">Déconnexion</button>
+    </div>
+    {% endif %}
 </header>
 <main class="hub-page">
 {% block content %}{% endblock %}
 </main>
+{% if hub_user %}
+<script>
+document.getElementById('hubLogoutBtn').addEventListener('click', async () => {
+    await fetch('/api/logout', {method: 'POST'});
+    window.location.href = '/login';
+});
+</script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -1,6 +1,7 @@
 import os
 from flask import Flask, render_template
 
+from auth import hub_auth_bp, current_hub_user, login_required
 from games.teinte import teinte_bp
 from games.motus import motus_bp
 from games.casino import casino_bp
@@ -8,9 +9,15 @@ from games.casino import casino_bp
 app = Flask(__name__)
 app.secret_key = os.environ.get("HUB_SECRET_KEY", "change-moi-en-prod")
 
+app.register_blueprint(hub_auth_bp)
 app.register_blueprint(teinte_bp)
 app.register_blueprint(motus_bp)
 app.register_blueprint(casino_bp)
+
+
+@app.context_processor
+def inject_hub_user():
+    return {"hub_user": current_hub_user()}
 
 # Pour ajouter un nouveau petit jeu :
 # 1. crée games/<nom>/ sur le même modèle que games/teinte/
@@ -23,8 +30,8 @@ GAMES = [
     {
         "name": "Teinte",
         "tagline": "Devine la couleur exacte",
-        "description": "Devine la couleur d'un élément d'un personnage connu "
-                        "(le pelage de Scooby-Doo, la tenue de Naruto…), entre potes, "
+        "description": "Devine la couleur d'un élément d'un personnage du domaine public "
+                        "(la cape de Dracula, le chapeau du Chapelier Fou…), entre potes, "
                         "en 10 manches chronométrées par manche.",
         "url": "/teinte/",
         "status": "available",
@@ -52,6 +59,7 @@ GAMES = [
 
 
 @app.route("/")
+@login_required
 def home():
     return render_template("home.html", games=GAMES)
 

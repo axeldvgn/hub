@@ -6,9 +6,10 @@ import string
 from datetime import datetime
 
 from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import generate_password_hash
 
 from . import poker_engine as poker
+from auth import current_hub_user, sync_local_account
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "casino.db")
 SESSION_KEY = "casino_user_id"
@@ -62,7 +63,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     chips INTEGER NOT NULL DEFAULT 1000,
     is_bot INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    hub_user_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS salons (
@@ -186,10 +188,11 @@ CREATE TABLE IF NOT EXISTS blackjack_hand_players (
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
-    try:
+    cols = [row[1] for row in db.execute("PRAGMA table_info(users)")]
+    if "is_bot" not in cols:
         db.execute("ALTER TABLE users ADD COLUMN is_bot INTEGER NOT NULL DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass  # colonne déjà présente (base créée avec le schéma le plus récent)
+    if "hub_user_id" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN hub_user_id INTEGER")
     db.commit()
     db.close()
 
@@ -202,17 +205,37 @@ def now():
     return datetime.utcnow().isoformat()
 
 
+def _create_synced_row(conn, username, hub_id):
+    conn.execute(
+        "INSERT INTO users (username, password_hash, chips, created_at, hub_user_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (username, generate_password_hash(os.urandom(16).hex()), STARTING_CHIPS, now(), hub_id),
+    )
+    conn.commit()
+
+
 def current_user():
     uid = session.get(SESSION_KEY)
-    if not uid:
+    if uid:
+        user = get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        if user:
+            return user
+
+    # Pas de session locale : si une session hub existe, on relie (ou crée)
+    # automatiquement le compte casino correspondant — connexion unique.
+    hub_user = current_hub_user()
+    if not hub_user:
         return None
-    return get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    db = get_db()
+    user = sync_local_account(db, hub_user, _create_synced_row)
+    session[SESSION_KEY] = user["id"]
+    return user
 
 
 def login_required(view):
     def wrapped(*args, **kwargs):
         if not current_user():
-            return redirect(url_for("casino.login_page"))
+            return redirect(url_for("hub_auth.login_page", next=request.path))
         return view(*args, **kwargs)
     wrapped.__name__ = view.__name__
     return wrapped
@@ -512,15 +535,8 @@ def _bot_round_bet(game_type, chips):
 @casino_bp.route("/")
 def home():
     if not current_user():
-        return redirect(url_for("casino.login_page"))
+        return redirect(url_for("hub_auth.login_page", next=request.path))
     return render_template("casino/home.html", user=current_user(), game_types=GAME_TYPES)
-
-
-@casino_bp.route("/login")
-def login_page():
-    if current_user():
-        return redirect(url_for("casino.home"))
-    return render_template("casino/login.html")
 
 
 GAME_ICONS = {"poker": "♠️", "roulette": "🎡", "blackjack": "🃏", "dice": "🎲", "slots": "🎰"}
@@ -542,42 +558,12 @@ def salon_page(code):
 
 
 # ---------------------------------------------------------------------------
-# API — comptes
+# API — compte
 # ---------------------------------------------------------------------------
-
-@casino_bp.route("/api/register", methods=["POST"])
-def api_register():
-    data = request.get_json(force=True)
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    if len(username) < 3 or len(password) < 4:
-        return jsonify(error="Pseudo (3+ car.) et mot de passe (4+ car.) requis."), 400
-    db = get_db()
-    exists = db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-    if exists:
-        return jsonify(error="Ce pseudo est déjà pris."), 400
-    db.execute(
-        "INSERT INTO users (username, password_hash, chips, created_at) VALUES (?, ?, ?, ?)",
-        (username, generate_password_hash(password), STARTING_CHIPS, now()),
-    )
-    db.commit()
-    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    session[SESSION_KEY] = user["id"]
-    return jsonify(ok=True)
-
-
-@casino_bp.route("/api/login", methods=["POST"])
-def api_login():
-    data = request.get_json(force=True)
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    db = get_db()
-    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify(error="Identifiants incorrects."), 400
-    session[SESSION_KEY] = user["id"]
-    return jsonify(ok=True)
-
+# La connexion se fait au niveau du hub (voir /login) ; current_user()
+# relie/crée automatiquement le compte casino correspondant. Seule la
+# déconnexion reste exposée ici, et elle est globale (session.clear() vide
+# aussi la session hub et celle des autres jeux).
 
 @casino_bp.route("/api/logout", methods=["POST"])
 def api_logout():

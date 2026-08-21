@@ -29,7 +29,7 @@
 <script>
 document.getElementById('logoutBtn').addEventListener('click', async () => {
     await fetch('/teinte/api/logout', {method: 'POST'});
-    window.location.href = '/teinte/login';
+    window.location.href = '/login';
 });
 </script>
 {% endif %}

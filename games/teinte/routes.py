@@ -6,7 +6,9 @@ import os
 import secrets
 from datetime import datetime
 from flask import Blueprint, g, session, request, jsonify, render_template, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.security import generate_password_hash
+
+from auth import current_hub_user, sync_local_account
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "teinte.db")
 TOTAL_ROUNDS = 10
@@ -52,7 +54,8 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    is_guest INTEGER NOT NULL DEFAULT 0
+    is_guest INTEGER NOT NULL DEFAULT 0,
+    hub_user_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS characters (
@@ -149,10 +152,13 @@ CHARACTERS = [
 def init_db():
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA)
-    # Migration douce pour une base créée avant l'ajout du mode invité.
+    # Migrations douces pour une base créée avant l'ajout du mode invité /
+    # de la connexion unique du hub.
     cols = [row[1] for row in db.execute("PRAGMA table_info(users)")]
     if "is_guest" not in cols:
         db.execute("ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0")
+    if "hub_user_id" not in cols:
+        db.execute("ALTER TABLE users ADD COLUMN hub_user_id INTEGER")
     count = db.execute("SELECT COUNT(*) FROM characters").fetchone()[0]
     if count == 0:
         db.executemany(
@@ -171,17 +177,40 @@ def now():
     return datetime.utcnow().isoformat()
 
 
+def _create_synced_row(conn, username, hub_id, is_guest):
+    conn.execute(
+        "INSERT INTO users (username, password_hash, created_at, is_guest, hub_user_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (username, generate_password_hash(secrets.token_hex(16)), now(), int(is_guest), hub_id),
+    )
+    conn.commit()
+
+
 def current_user():
     uid = session.get(SESSION_KEY)
-    if not uid:
+    if uid:
+        user = get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+        if user:
+            return user
+
+    # Pas de session locale : si une session hub existe, on relie (ou crée)
+    # automatiquement le compte teinte correspondant — connexion unique.
+    hub_user = current_hub_user()
+    if not hub_user:
         return None
-    return get_db().execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    db = get_db()
+    user = sync_local_account(
+        db, hub_user,
+        lambda conn, username, hub_id: _create_synced_row(conn, username, hub_id, hub_user["is_guest"]),
+    )
+    session[SESSION_KEY] = user["id"]
+    return user
 
 
 def login_required(view):
     def wrapped(*args, **kwargs):
         if not current_user():
-            return redirect(url_for("teinte.login_page"))
+            return redirect(url_for("hub_auth.login_page", next=request.path))
         return view(*args, **kwargs)
     wrapped.__name__ = view.__name__
     return wrapped
@@ -244,15 +273,8 @@ def get_current_round(game_id, round_number):
 @teinte_bp.route("/")
 def home():
     if not current_user():
-        return redirect(url_for("teinte.login_page"))
+        return redirect(url_for("hub_auth.login_page", next=request.path))
     return render_template("teinte/home.html", user=current_user())
-
-
-@teinte_bp.route("/login")
-def login_page():
-    if current_user():
-        return redirect(url_for("teinte.home"))
-    return render_template("teinte/login.html")
 
 
 @teinte_bp.route("/game/<code>/lobby")
@@ -292,67 +314,12 @@ def results_page(code):
 
 
 # ---------------------------------------------------------------------------
-# API — comptes
+# API — compte
 # ---------------------------------------------------------------------------
-
-@teinte_bp.route("/api/register", methods=["POST"])
-def api_register():
-    data = request.get_json(force=True)
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    if len(username) < 3 or len(password) < 4:
-        return jsonify(error="Pseudo (3+ car.) et mot de passe (4+ car.) requis."), 400
-    db = get_db()
-    exists = db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-    if exists:
-        return jsonify(error="Ce pseudo est déjà pris."), 400
-    db.execute(
-        "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
-        (username, generate_password_hash(password), now()),
-    )
-    db.commit()
-    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    session[SESSION_KEY] = user["id"]
-    return jsonify(ok=True)
-
-
-@teinte_bp.route("/api/guest", methods=["POST"])
-def api_guest_login():
-    data = request.get_json(force=True)
-    pseudo = (data.get("username") or "").strip()
-    if len(pseudo) < 2 or len(pseudo) > 20:
-        return jsonify(error="Pseudo entre 2 et 20 caractères."), 400
-
-    db = get_db()
-    username = pseudo
-    exists = db.execute("SELECT 1 FROM users WHERE username = ?", (username,)).fetchone()
-    if exists:
-        # Pseudo déjà pris (par un compte ou un autre invité) : on ajoute
-        # un petit suffixe pour rester unique sans bloquer la personne.
-        username = f"{pseudo}-{random.randint(1000, 9999)}"
-
-    db.execute(
-        "INSERT INTO users (username, password_hash, created_at, is_guest) VALUES (?, ?, ?, 1)",
-        (username, generate_password_hash(secrets.token_hex(16)), now()),
-    )
-    db.commit()
-    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    session[SESSION_KEY] = user["id"]
-    return jsonify(ok=True, username=username)
-
-
-@teinte_bp.route("/api/login", methods=["POST"])
-def api_login():
-    data = request.get_json(force=True)
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    db = get_db()
-    user = db.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
-    if not user or not check_password_hash(user["password_hash"], password):
-        return jsonify(error="Identifiants incorrects."), 400
-    session[SESSION_KEY] = user["id"]
-    return jsonify(ok=True)
-
+# La connexion se fait au niveau du hub (voir /login) ; current_user()
+# relie/crée automatiquement le compte teinte correspondant. Seule la
+# déconnexion reste exposée ici, et elle est globale (session.clear() vide
+# aussi la session hub et celle des autres jeux).
 
 @teinte_bp.route("/api/logout", methods=["POST"])
 def api_logout():

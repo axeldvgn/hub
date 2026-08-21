@@ -1,18 +1,21 @@
 const tabs = document.querySelectorAll(".auth-tab");
 const loginForm = document.getElementById("loginForm");
 const registerForm = document.getElementById("registerForm");
+const guestForm = document.getElementById("guestForm");
+const forms = { login: loginForm, register: registerForm, guest: guestForm };
 
 tabs.forEach(tab => {
     tab.addEventListener("click", () => {
         tabs.forEach(t => t.classList.remove("active"));
         tab.classList.add("active");
-        const isLogin = tab.dataset.tab === "login";
-        loginForm.hidden = !isLogin;
-        registerForm.hidden = isLogin;
+        const active = tab.dataset.tab;
+        Object.entries(forms).forEach(([name, form]) => {
+            form.hidden = name !== active;
+        });
     });
 });
 
-async function handleAuth(form, endpoint, errorEl) {
+function handleAuth(form, endpoint, errorEl) {
     form.addEventListener("submit", async (evt) => {
         evt.preventDefault();
         errorEl.textContent = "";
@@ -28,12 +31,13 @@ async function handleAuth(form, endpoint, errorEl) {
                 errorEl.textContent = json.error || "Une erreur est survenue.";
                 return;
             }
-            window.location.href = "/casino/";
+            window.location.href = window.HUB_LOGIN_NEXT || "/";
         } catch (e) {
             errorEl.textContent = "Impossible de contacter le serveur.";
         }
     });
 }
 
-handleAuth(loginForm, "/casino/api/login", document.getElementById("loginError"));
-handleAuth(registerForm, "/casino/api/register", document.getElementById("registerError"));
+handleAuth(loginForm, "/api/login", document.getElementById("loginError"));
+handleAuth(registerForm, "/api/register", document.getElementById("registerError"));
+handleAuth(guestForm, "/api/guest", document.getElementById("guestError"));

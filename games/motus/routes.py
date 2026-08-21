@@ -1,13 +1,17 @@
-from flask import Blueprint, request, jsonify, render_template
+from flask import Blueprint, request, jsonify, render_template, session
 import sqlite3
 import hashlib
+import random
 import secrets
 import os
 from datetime import datetime
 
+from auth import current_hub_user
+
 # Blueprint monté sous /motus par le hub (voir app.py à la racine).
-# Auth par token (pas de session Flask ici), donc aucun risque de
-# collision avec la session utilisée par un autre jeu du hub.
+# Auth par token (pas de session Flask ici pour ses propres comptes), mais
+# le token est désormais obtenu automatiquement via la session du hub
+# (voir /api/auto) : plus besoin de se reconnecter jeu par jeu.
 motus_bp = Blueprint(
     "motus",
     __name__,
@@ -33,7 +37,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             pseudo TEXT UNIQUE NOT NULL,
             mot_de_passe_hash TEXT NOT NULL,
-            token TEXT
+            token TEXT,
+            hub_user_id INTEGER
         )
     """)
     conn.execute("""
@@ -46,6 +51,9 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(users)")]
+    if "hub_user_id" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN hub_user_id INTEGER")
     conn.commit()
     conn.close()
 
@@ -63,6 +71,30 @@ def utilisateur_depuis_token(token):
     return u
 
 
+def utilisateur_depuis_hub(hub_user):
+    """Retrouve (ou crée) le compte motus lié au compte hub, via
+    hub_user_id — jamais par pseudo, pour ne pas accrocher un compte motus
+    créé avant la mise en place de la connexion unique."""
+    conn = get_db()
+    u = conn.execute("SELECT * FROM users WHERE hub_user_id = ?", (hub_user["id"],)).fetchone()
+    if not u:
+        pseudo = hub_user["username"]
+        if conn.execute("SELECT 1 FROM users WHERE pseudo = ?", (pseudo,)).fetchone():
+            pseudo = f"{pseudo}-{random.randint(1000, 9999)}"
+        conn.execute(
+            "INSERT INTO users (pseudo, mot_de_passe_hash, token, hub_user_id) VALUES (?, ?, ?, ?)",
+            (pseudo, hash_mdp(secrets.token_hex(16)), None, hub_user["id"]),
+        )
+        conn.commit()
+        u = conn.execute("SELECT * FROM users WHERE hub_user_id = ?", (hub_user["id"],)).fetchone()
+
+    token = secrets.token_hex(16)
+    conn.execute("UPDATE users SET token = ? WHERE id = ?", (token, u["id"]))
+    conn.commit()
+    conn.close()
+    return u["pseudo"], token
+
+
 # ---------- Page HTML principale ----------
 
 @motus_bp.route('/')
@@ -71,48 +103,16 @@ def index():
 
 
 # ---------- Routes API ----------
+# La connexion se fait au niveau du hub (voir /login) : plus d'inscription
+# ni de connexion propres à motus. /api/auto échange la session hub contre
+# un token motus (créant le compte lié au premier accès).
 
-@motus_bp.route("/api/inscription", methods=["POST"])
-def inscription():
-    data = request.get_json(force=True, silent=True) or {}
-    pseudo = (data.get("pseudo") or "").strip()
-    mdp = data.get("mot_de_passe") or ""
-
-    if len(pseudo) < 3 or len(mdp) < 4:
-        return jsonify({"erreur": "Pseudo (3+ caractères) et mot de passe (4+ caractères) requis"}), 400
-
-    conn = get_db()
-    existe = conn.execute("SELECT id FROM users WHERE pseudo = ?", (pseudo,)).fetchone()
-    if existe:
-        conn.close()
-        return jsonify({"erreur": "Ce pseudo est déjà pris"}), 409
-
-    token = secrets.token_hex(16)
-    conn.execute(
-        "INSERT INTO users (pseudo, mot_de_passe_hash, token) VALUES (?, ?, ?)",
-        (pseudo, hash_mdp(mdp), token)
-    )
-    conn.commit()
-    conn.close()
-    return jsonify({"pseudo": pseudo, "token": token})
-
-
-@motus_bp.route("/api/connexion", methods=["POST"])
-def connexion():
-    data = request.get_json(force=True, silent=True) or {}
-    pseudo = (data.get("pseudo") or "").strip()
-    mdp = data.get("mot_de_passe") or ""
-
-    conn = get_db()
-    u = conn.execute("SELECT * FROM users WHERE pseudo = ?", (pseudo,)).fetchone()
-    if not u or u["mot_de_passe_hash"] != hash_mdp(mdp):
-        conn.close()
-        return jsonify({"erreur": "Pseudo ou mot de passe incorrect"}), 401
-
-    token = secrets.token_hex(16)
-    conn.execute("UPDATE users SET token = ? WHERE id = ?", (token, u["id"]))
-    conn.commit()
-    conn.close()
+@motus_bp.route("/api/auto", methods=["POST"])
+def auto_login():
+    hub_user = current_hub_user()
+    if not hub_user:
+        return jsonify({"erreur": "Non connecté"}), 401
+    pseudo, token = utilisateur_depuis_hub(hub_user)
     return jsonify({"pseudo": pseudo, "token": token})
 
 
@@ -125,6 +125,8 @@ def deconnexion():
         conn.execute("UPDATE users SET token = NULL WHERE id = ?", (u["id"],))
         conn.commit()
         conn.close()
+    # Déconnexion globale : vide aussi la session hub et celle des autres jeux.
+    session.clear()
     return jsonify({"ok": True})
 
 

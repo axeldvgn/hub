@@ -1,5 +1,8 @@
 /* compte.js
    Doit être chargé APRÈS motus.js dans la page (ordre des <script>).
+   Le compte est celui du hub (connexion unique) : ce fichier ne fait plus
+   que réclamer un token motus via la session hub (cookie envoyé
+   automatiquement), sans jamais redemander pseudo/mot de passe ici.
 */
 
 const API_BASE = "/motus/api";
@@ -23,6 +26,7 @@ function injecterUI() {
 
   afficherPanel();
   chargerClassement();
+  connecterViaHub();
 }
 
 function afficherPanel() {
@@ -31,16 +35,11 @@ function afficherPanel() {
   if (!compteToken) {
     panel.innerHTML = `
       <h2>Compte</h2>
-      <div class="cp-erreur" id="cp-erreur"></div>
-      <input type="text" id="cp-pseudo" placeholder="Pseudo" autocomplete="username">
-      <input type="password" id="cp-mdp" placeholder="Mot de passe" autocomplete="current-password">
+      <div class="cp-infos">Connecte-toi une fois sur le hub pour retrouver ton compte ici.</div>
       <div class="cp-boutons">
-        <button id="cp-connexion">Connexion</button>
-        <button id="cp-inscription">Créer un compte</button>
+        <a id="cp-connexion" href="/login?next=/motus/">Se connecter</a>
       </div>
     `;
-    document.getElementById("cp-connexion").onclick = () => authentifier("/connexion");
-    document.getElementById("cp-inscription").onclick = () => authentifier("/inscription");
   } else {
     panel.innerHTML = `
       <h2>Compte</h2>
@@ -53,34 +52,19 @@ function afficherPanel() {
   }
 }
 
-/* ---------- Auth ---------- */
-async function authentifier(route) {
-  const pseudo = document.getElementById("cp-pseudo").value.trim();
-  const mdp = document.getElementById("cp-mdp").value;
-  const erreurEl = document.getElementById("cp-erreur");
-  erreurEl.textContent = "";
-
+/* ---------- Auth (via la session du hub) ---------- */
+async function connecterViaHub() {
+  if (compteToken) return; // déjà un token motus valide, rien à faire
   try {
-    const reponse = await fetch(API_BASE + route, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pseudo, mot_de_passe: mdp })
-    });
+    const reponse = await fetch(API_BASE + "/auto", { method: "POST" });
+    if (!reponse.ok) return; // pas connecté au hub : on laisse le lien "Se connecter"
     const data = await reponse.json();
-
-    if (!reponse.ok) {
-      erreurEl.textContent = data.erreur || "Erreur inconnue";
-      return;
-    }
-
     compteToken = data.token;
     comptePseudo = data.pseudo;
     localStorage.setItem("motus_token", compteToken);
     localStorage.setItem("motus_pseudo", comptePseudo);
     afficherPanel();
-  } catch (e) {
-    erreurEl.textContent = "Impossible de joindre le serveur (le backend Flask tourne-t-il ?)";
-  }
+  } catch (e) { /* silencieux : pas de blocage du jeu si le serveur est injoignable */ }
 }
 
 async function deconnexion() {
@@ -95,7 +79,7 @@ async function deconnexion() {
   comptePseudo = null;
   localStorage.removeItem("motus_token");
   localStorage.removeItem("motus_pseudo");
-  afficherPanel();
+  window.location.href = "/login";
 }
 
 /* ---------- Classement (toujours visible, à droite) ---------- */

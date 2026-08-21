@@ -30,7 +30,7 @@
 <script>
 document.getElementById('logoutBtn').addEventListener('click', async () => {
     await fetch('/casino/api/logout', {method: 'POST'});
-    window.location.href = '/casino/login';
+    window.location.href = '/login';
 });
 </script>
 {% endif %}

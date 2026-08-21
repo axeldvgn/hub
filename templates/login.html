@@ -1,11 +1,10 @@
-{% extends "teinte/base.html" %}
-{% block title %}Teinte — Connexion{% endblock %}
+{% extends "base.html" %}
+{% block title %}Connexion — Le Labo{% endblock %}
 {% block content %}
-<div class="auth-screen">
+<section class="auth-screen">
     <div class="auth-hero">
-        <div class="hero-wheel"></div>
-        <h1 class="auth-title">Teinte</h1>
-        <p class="auth-tagline">Devine la couleur exacte, entre potes.</p>
+        <h1 class="auth-title">Connexion</h1>
+        <p class="auth-tagline">Un seul compte pour tous les jeux du Labo.</p>
     </div>
 
     <div class="auth-card">
@@ -23,7 +22,7 @@
                 <input type="password" name="password" autocomplete="current-password" required>
             </label>
             <p class="form-error" id="loginError"></p>
-            <button type="submit" class="btn-primary">Se connecter</button>
+            <button type="submit" class="btn-primary btn-large">Se connecter</button>
         </form>
 
         <form id="registerForm" class="auth-form" hidden>
@@ -34,7 +33,7 @@
                 <input type="password" name="password" minlength="4" autocomplete="new-password" required>
             </label>
             <p class="form-error" id="registerError"></p>
-            <button type="submit" class="btn-primary">Créer mon compte</button>
+            <button type="submit" class="btn-primary btn-large">Créer mon compte</button>
         </form>
 
         <form id="guestForm" class="auth-form" hidden>
@@ -43,11 +42,12 @@
             </label>
             <p class="auth-hint">Pas de mot de passe : tu joues directement, mais la partie ne sera pas liée à un compte permanent.</p>
             <p class="form-error" id="guestError"></p>
-            <button type="submit" class="btn-primary">Jouer en invité</button>
+            <button type="submit" class="btn-primary btn-large">Jouer en invité</button>
         </form>
     </div>
-</div>
+</section>
 {% endblock %}
 {% block scripts %}
-<script src="{{ url_for('teinte.static', filename='js/login.js') }}"></script>
+<script>window.HUB_LOGIN_NEXT = {{ next|tojson }};</script>
+<script src="{{ url_for('static', filename='js/login.js') }}"></script>
 {% endblock %}
